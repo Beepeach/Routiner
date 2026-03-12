@@ -1,0 +1,33 @@
+# Logs
+logs
+*.log
+
+# Dependency directories
+node_modules/
+
+# Environment variables
+.env
+
+# Editor directories and files
+.idea
+.vscode
+.cursor
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Claude / Cursor project-local
+.claude/commands/tm
+.claude/settings.local.json
+.taskmaster
+.mcp.json
+CLAUDE.local.md
+
+# OS specific
+.DS_Store
+
+# Task files
+# tasks.json
+# tasks/ 
