@@ -28,6 +28,16 @@ CLAUDE.local.md
 # OS specific
 .DS_Store
 
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
 # Task files
 # tasks.json
 # tasks/ 
