@@ -4,6 +4,11 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     var window: UIWindow?
 
+    // MARK: - Properties
+
+    private var diContainer: DIContainer?
+    private var appCoordinator: AppCoordinator?
+
     // MARK: - UIWindowSceneDelegate
 
     func scene(
@@ -13,13 +18,22 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     ) {
         guard let windowScene = scene as? UIWindowScene else { return }
 
-        let rootViewController = UINavigationController(
-            rootViewController: HomeViewController()
+        // 앱 조립 루트: DIContainer → NavigationController → AppCoordinator
+        let diContainer = DefaultDIContainer()
+        let navigationController = UINavigationController()
+        let appCoordinator = AppCoordinator(
+            navigationController: navigationController,
+            diContainer: diContainer
         )
 
+        self.diContainer = diContainer
+        self.appCoordinator = appCoordinator
+
         let window = UIWindow(windowScene: windowScene)
-        window.rootViewController = rootViewController
+        window.rootViewController = navigationController
         window.makeKeyAndVisible()
         self.window = window
+
+        appCoordinator.start()
     }
 }
