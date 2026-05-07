@@ -6,6 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		469649112F9A01E200B9DCDD /* SnapKit in Frameworks */ = {isa = PBXBuildFile; productRef = 469649102F9A01E200B9DCDD /* SnapKit */; };
+		469649142F9A0C6600B9DCDD /* Differentiator in Frameworks */ = {isa = PBXBuildFile; productRef = 469649132F9A0C6600B9DCDD /* Differentiator */; };
+		469649162F9A0C6600B9DCDD /* RxDataSources in Frameworks */ = {isa = PBXBuildFile; productRef = 469649152F9A0C6600B9DCDD /* RxDataSources */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		469CEC822F62D8BA0043D9DE /* BeePeachRoutiner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BeePeachRoutiner.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -36,6 +42,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				469649162F9A0C6600B9DCDD /* RxDataSources in Frameworks */,
+				469649142F9A0C6600B9DCDD /* Differentiator in Frameworks */,
+				469649112F9A01E200B9DCDD /* SnapKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -78,6 +87,9 @@
 			);
 			name = BeePeachRoutiner;
 			packageProductDependencies = (
+				469649102F9A01E200B9DCDD /* SnapKit */,
+				469649132F9A0C6600B9DCDD /* Differentiator */,
+				469649152F9A0C6600B9DCDD /* RxDataSources */,
 			);
 			productName = BeePeachRoutiner;
 			productReference = 469CEC822F62D8BA0043D9DE /* BeePeachRoutiner.app */;
@@ -107,6 +119,11 @@
 			);
 			mainGroup = 469CEC792F62D8B90043D9DE;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				4696490E2F9A00D100B9DCDD /* XCRemoteSwiftPackageReference "rxswift" */,
+				4696490F2F9A01E200B9DCDD /* XCRemoteSwiftPackageReference "snapkit" */,
+				469649122F9A0C6600B9DCDD /* XCRemoteSwiftPackageReference "rxdatasources" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 469CEC832F62D8BA0043D9DE /* Products */;
 			projectDirPath = "";
@@ -335,6 +352,51 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		4696490E2F9A00D100B9DCDD /* XCRemoteSwiftPackageReference "rxswift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/reactivex/rxswift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 6.10.2;
+			};
+		};
+		4696490F2F9A01E200B9DCDD /* XCRemoteSwiftPackageReference "snapkit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/snapkit/snapkit";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.7.1;
+			};
+		};
+		469649122F9A0C6600B9DCDD /* XCRemoteSwiftPackageReference "rxdatasources" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/rxswiftcommunity/rxdatasources";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.0.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		469649102F9A01E200B9DCDD /* SnapKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4696490F2F9A01E200B9DCDD /* XCRemoteSwiftPackageReference "snapkit" */;
+			productName = SnapKit;
+		};
+		469649132F9A0C6600B9DCDD /* Differentiator */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 469649122F9A0C6600B9DCDD /* XCRemoteSwiftPackageReference "rxdatasources" */;
+			productName = Differentiator;
+		};
+		469649152F9A0C6600B9DCDD /* RxDataSources */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 469649122F9A0C6600B9DCDD /* XCRemoteSwiftPackageReference "rxdatasources" */;
+			productName = RxDataSources;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 469CEC7A2F62D8B90043D9DE /* Project object */;
 }
