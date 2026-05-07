@@ -12,7 +12,18 @@
 		469649162F9A0C6600B9DCDD /* RxDataSources in Frameworks */ = {isa = PBXBuildFile; productRef = 469649152F9A0C6600B9DCDD /* RxDataSources */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		463BF4B82FAB71F500190AC6 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 469CEC7A2F62D8B90043D9DE /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 469CEC812F62D8BA0043D9DE;
+			remoteInfo = BeePeachRoutiner;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
+		463BF4B42FAB71F500190AC6 /* BeePeachRoutinerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BeePeachRoutinerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		469CEC822F62D8BA0043D9DE /* BeePeachRoutiner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BeePeachRoutiner.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -27,6 +38,11 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		463BF4B52FAB71F500190AC6 /* BeePeachRoutinerTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = BeePeachRoutinerTests;
+			sourceTree = "<group>";
+		};
 		469CEC842F62D8BA0043D9DE /* BeePeachRoutiner */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -38,6 +54,13 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		463BF4B12FAB71F500190AC6 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		469CEC7F2F62D8BA0043D9DE /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -55,6 +78,7 @@
 			isa = PBXGroup;
 			children = (
 				469CEC842F62D8BA0043D9DE /* BeePeachRoutiner */,
+				463BF4B52FAB71F500190AC6 /* BeePeachRoutinerTests */,
 				469CEC832F62D8BA0043D9DE /* Products */,
 			);
 			sourceTree = "<group>";
@@ -63,6 +87,7 @@
 			isa = PBXGroup;
 			children = (
 				469CEC822F62D8BA0043D9DE /* BeePeachRoutiner.app */,
+				463BF4B42FAB71F500190AC6 /* BeePeachRoutinerTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -70,6 +95,29 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		463BF4B32FAB71F500190AC6 /* BeePeachRoutinerTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 463BF4BC2FAB71F500190AC6 /* Build configuration list for PBXNativeTarget "BeePeachRoutinerTests" */;
+			buildPhases = (
+				463BF4B02FAB71F500190AC6 /* Sources */,
+				463BF4B12FAB71F500190AC6 /* Frameworks */,
+				463BF4B22FAB71F500190AC6 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				463BF4B92FAB71F500190AC6 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				463BF4B52FAB71F500190AC6 /* BeePeachRoutinerTests */,
+			);
+			name = BeePeachRoutinerTests;
+			packageProductDependencies = (
+			);
+			productName = BeePeachRoutinerTests;
+			productReference = 463BF4B42FAB71F500190AC6 /* BeePeachRoutinerTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		469CEC812F62D8BA0043D9DE /* BeePeachRoutiner */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 469CEC8D2F62D8BB0043D9DE /* Build configuration list for PBXNativeTarget "BeePeachRoutiner" */;
@@ -105,6 +153,10 @@
 				LastSwiftUpdateCheck = 2630;
 				LastUpgradeCheck = 2630;
 				TargetAttributes = {
+					463BF4B32FAB71F500190AC6 = {
+						CreatedOnToolsVersion = 26.3;
+						TestTargetID = 469CEC812F62D8BA0043D9DE;
+					};
 					469CEC812F62D8BA0043D9DE = {
 						CreatedOnToolsVersion = 26.3;
 					};
@@ -130,11 +182,19 @@
 			projectRoot = "";
 			targets = (
 				469CEC812F62D8BA0043D9DE /* BeePeachRoutiner */,
+				463BF4B32FAB71F500190AC6 /* BeePeachRoutinerTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		463BF4B22FAB71F500190AC6 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		469CEC802F62D8BA0043D9DE /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -145,6 +205,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		463BF4B02FAB71F500190AC6 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		469CEC7E2F62D8BA0043D9DE /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -154,7 +221,57 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		463BF4B92FAB71F500190AC6 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 469CEC812F62D8BA0043D9DE /* BeePeachRoutiner */;
+			targetProxy = 463BF4B82FAB71F500190AC6 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		463BF4BA2FAB71F500190AC6 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = WX2G6GFFQT;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.beepeachstudio.BeePeachRoutinerTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BeePeachRoutiner.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BeePeachRoutiner";
+			};
+			name = Debug;
+		};
+		463BF4BB2FAB71F500190AC6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = WX2G6GFFQT;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.beepeachstudio.BeePeachRoutinerTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BeePeachRoutiner.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BeePeachRoutiner";
+			};
+			name = Release;
+		};
 		469CEC8B2F62D8BB0043D9DE /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -283,7 +400,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = SD649AQPCG;
+				DEVELOPMENT_TEAM = G5RH9MF273;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BeePeachRoutiner/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -310,7 +427,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = SD649AQPCG;
+				DEVELOPMENT_TEAM = G5RH9MF273;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BeePeachRoutiner/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -333,6 +450,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		463BF4BC2FAB71F500190AC6 /* Build configuration list for PBXNativeTarget "BeePeachRoutinerTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				463BF4BA2FAB71F500190AC6 /* Debug */,
+				463BF4BB2FAB71F500190AC6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		469CEC7D2F62D8BA0043D9DE /* Build configuration list for PBXProject "BeePeachRoutiner" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
