@@ -10,7 +10,7 @@ import Foundation
 ///   - `FocusSessionError.noActiveSession`: 활성 세션이 존재하지 않을 때 (complete/cancel)
 ///   - `FocusSessionError.sessionMismatch`: 활성 세션 id와 요청 sessionId가 다를 때 (complete/cancel)
 ///   - Repository 접근 실패 시 Error
-protocol FocusSessionUseCase {
+protocol FocusSessionUseCase: Sendable {
     func start(duration: TimeInterval, goal: FocusSessionGoal?) async throws -> FocusSession
     func complete(sessionId: UUID) async throws -> FocusSession
     func cancel(sessionId: UUID) async throws -> FocusSession
