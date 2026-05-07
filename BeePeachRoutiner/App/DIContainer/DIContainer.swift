@@ -4,14 +4,9 @@ import UIKit
 
 /// 앱 전역 의존성 주입 컨테이너의 계약.
 ///
-/// 현재는 비어있으며, 이슈 #2(Domain)와 이슈 #3(Repository) 이후
-/// Repository/UseCase/ViewModel 팩토리가 이 프로토콜에 추가된다.
-protocol DIContainer: AnyObject {
-    // 이슈 #2 이후 다음과 같은 멤버들이 추가될 예정이다.
-    //
-    //   var focusSessionRepository: FocusSessionRepository { get }
-    //   func makeFocusViewModel() -> FocusViewModel
-    //   func makeFocusCoordinator(
-    //       navigationController: UINavigationController
-    //   ) -> FocusCoordinator
+/// 싱글톤성 의존성은 프로퍼티로, 화면마다 새 인스턴스가 필요한 경우는 Factory Method로 노출한다.
+protocol DIContainer: AnyObject, Sendable {
+    var focusSessionRepository: FocusSessionRepository { get }
+
+    func makeFocusSessionUseCase() -> FocusSessionUseCase
 }

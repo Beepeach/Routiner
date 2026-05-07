@@ -1,5 +1,5 @@
 import Foundation
 
-struct FocusSessionGoal {
+struct FocusSessionGoal: Sendable {
     let title: String
 }

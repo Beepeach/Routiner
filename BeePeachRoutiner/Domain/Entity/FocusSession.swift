@@ -1,6 +1,6 @@
 import Foundation
 
-struct FocusSession {
+struct FocusSession: Sendable {
     let id: UUID
     let startedAt: Date
     let duration: TimeInterval  // 초 단위
