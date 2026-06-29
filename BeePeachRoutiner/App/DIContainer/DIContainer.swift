@@ -9,4 +9,5 @@ protocol DIContainer: AnyObject, Sendable {
     var focusSessionRepository: FocusSessionRepository { get }
 
     func makeFocusSessionUseCase() -> FocusSessionUseCase
+    func makeFocusViewModel() -> FocusViewModel
 }
