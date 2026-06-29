@@ -23,4 +23,8 @@ final class DefaultDIContainer: DIContainer {
     func makeFocusSessionUseCase() -> FocusSessionUseCase {
         DefaultFocusSessionUseCase(repository: focusSessionRepository)
     }
+
+    func makeFocusViewModel() -> FocusViewModel {
+        FocusViewModel(useCase: makeFocusSessionUseCase())
+    }
 }

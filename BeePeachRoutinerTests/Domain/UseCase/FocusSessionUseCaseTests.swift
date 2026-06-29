@@ -81,6 +81,52 @@ final class FocusSessionUseCaseTests: XCTestCase {
         }
     }
 
+    // MARK: - pause / resume
+
+    func test_pause_shouldTransitionToPaused_whenActiveSessionExists() async throws {
+        // Given
+        let stub = FocusSessionRepositoryStub()
+        let active = makeActiveSession()
+        stub.activeSession = active
+        let sut = DefaultFocusSessionUseCase(repository: stub)
+
+        // When
+        let result = try await sut.pause(sessionId: active.id)
+
+        // Then: status 만 바뀌고 completedAt 은 그대로 (nil)
+        XCTAssertEqual(result.status, .paused)
+        XCTAssertNil(result.completedAt)
+        XCTAssertEqual(stub.activeSession?.status, .paused)
+    }
+
+    func test_resume_shouldTransitionToActive_whenPausedSessionExists() async throws {
+        // Given: paused 상태
+        let stub = FocusSessionRepositoryStub()
+        var paused = makeActiveSession()
+        paused.status = .paused
+        stub.activeSession = paused
+        let sut = DefaultFocusSessionUseCase(repository: stub)
+
+        // When
+        let result = try await sut.resume(sessionId: paused.id)
+
+        // Then
+        XCTAssertEqual(result.status, .active)
+        XCTAssertNil(result.completedAt)
+        XCTAssertEqual(stub.activeSession?.status, .active)
+    }
+
+    func test_pause_shouldThrowNoActiveSession_whenNoSession() async {
+        // Given
+        let stub = FocusSessionRepositoryStub()
+        let sut = DefaultFocusSessionUseCase(repository: stub)
+
+        // When / Then
+        await assertThrowsFocusSessionError(.noActiveSession) {
+            _ = try await sut.pause(sessionId: UUID())
+        }
+    }
+
     // MARK: - cancel
 
     func test_cancel_shouldMarkSessionCancelled_whenActiveSessionExists() async throws {
