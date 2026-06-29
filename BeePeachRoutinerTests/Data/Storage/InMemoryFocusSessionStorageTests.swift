@@ -63,6 +63,20 @@ final class InMemoryFocusSessionStorageTests: XCTestCase {
         XCTAssertEqual(result?.status, .active)
     }
 
+    func test_fetchActive_shouldReturnPausedSession_whenPausedSessionExists() async throws {
+        // Given: paused 도 "종료되지 않은 진행 중" 으로 보고 fetchActive 가 반환해야 한다.
+        let sut = InMemoryFocusSessionStorage()
+        let session = makeSession(status: .paused)
+        try await sut.save(session)
+
+        // When
+        let result = try await sut.fetchActive()
+
+        // Then
+        XCTAssertEqual(result?.id, session.id)
+        XCTAssertEqual(result?.status, .paused)
+    }
+
     func test_fetchActive_shouldReturnNil_whenAllSessionsAreNotActive() async throws {
         // Given
         let sut = InMemoryFocusSessionStorage()

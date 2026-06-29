@@ -23,8 +23,10 @@ actor InMemoryFocusSessionStorage: FocusSessionStorage {
         sessions[session.id] = session
     }
 
+    /// 종료(`completed`/`cancelled`)되지 않은 진행 중 세션을 반환한다.
+    /// `paused` 도 "잠시 멈춘 진행 중" 으로 보고 함께 반환해야 cancel/resume 이 동작한다.
     func fetchActive() async throws -> FocusSession? {
-        sessions.values.first(where: { $0.status == .active })
+        sessions.values.first(where: { $0.status == .active || $0.status == .paused })
     }
 
     func update(_ session: FocusSession) async throws {
