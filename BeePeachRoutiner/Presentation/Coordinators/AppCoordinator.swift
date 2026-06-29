@@ -4,8 +4,7 @@ import UIKit
 
 /// 앱 진입점 Coordinator. `SceneDelegate`가 window에 연결한다.
 ///
-/// 현재는 플레이스홀더 `FocusViewController` 하나만 표시한다.
-/// 이슈 #4에서 `FocusCoordinator`로 위임 구조가 확장될 예정이다.
+/// 자식 `FocusCoordinator`에 Focus 도메인 화면 흐름을 위임한다.
 final class AppCoordinator: Coordinator {
 
     // MARK: - Properties
@@ -28,7 +27,11 @@ final class AppCoordinator: Coordinator {
     // MARK: - Coordinator
 
     func start() {
-        let focusViewController = FocusViewController()
-        navigationController.setViewControllers([focusViewController], animated: false)
+        let focusCoordinator = FocusCoordinator(
+            navigationController: navigationController,
+            diContainer: diContainer
+        )
+        addChild(focusCoordinator)
+        focusCoordinator.start()
     }
 }
