@@ -24,6 +24,9 @@ final class FocusViewController: UIViewController {
     /// 사용자가 다이얼 knob 을 회전시킬 때 ratio 를 ViewModel 로 전달하는 통로.
     private let dialRatioSubject = PublishSubject<CGFloat>()
 
+    /// 사용자가 휠 피커를 돌릴 때 duration 을 ViewModel 로 전달하는 통로.
+    private let wheelDurationSubject = PublishSubject<TimeInterval>()
+
     /// primaryButton tap 을 현재 상태(idle/running/paused)에 따라 분기하기 위한 통로들.
     private let startSubject = PublishSubject<Void>()
     private let pauseSubject = PublishSubject<Void>()
@@ -142,6 +145,10 @@ final class FocusViewController: UIViewController {
 
         let input = FocusViewModel.Input(
             dialRatioChanged: dialRatioSubject.asObservable(),
+            wheelDurationChanged: wheelDurationSubject.asObservable(),
+            // 세그먼트/goal 필드 UI 는 다음 커밋에서 연결한다. 그 전까지는 무이벤트.
+            modeChanged: .never(),
+            goalChanged: .never(),
             startTapped: startSubject.asObservable(),
             pauseTapped: pauseSubject.asObservable(),
             resumeTapped: resumeSubject.asObservable(),

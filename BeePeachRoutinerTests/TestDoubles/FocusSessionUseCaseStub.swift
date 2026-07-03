@@ -35,12 +35,14 @@ final class FocusSessionUseCaseStub: FocusSessionUseCase, @unchecked Sendable {
     private(set) var lastCancelledSessionId: UUID?
     private(set) var lastCompletedSessionId: UUID?
     private(set) var lastStartedDuration: TimeInterval?
+    private(set) var lastStartedGoal: FocusSessionGoal?
 
     // MARK: - FocusSessionUseCase
 
     func start(duration: TimeInterval, goal: FocusSessionGoal?) async throws -> FocusSession {
         startCallCount += 1
         lastStartedDuration = duration
+        lastStartedGoal = goal
         if let error = startError { throw error }
         return FocusSession(
             id: UUID(),

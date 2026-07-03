@@ -367,6 +367,273 @@ final class FocusViewModelTests: XCTestCase {
         XCTAssertEqual(Double(initial ?? -1), 0.5, accuracy: 0.0001)
     }
 
+    // MARK: - wheel
+
+    func test_wheelDurationChanged_shouldUpdateTimeText_whenIdle() {
+        // Given
+        let useCase = FocusSessionUseCaseStub()
+        let sut = FocusViewModel(useCase: useCase, maxDuration: 60 * 60)
+        let runtime = bind(sut)
+
+        var captured: [String] = []
+        runtime.output.timeText
+            .drive(onNext: { captured.append($0) })
+            .disposed(by: disposeBag)
+
+        // When: 휠에서 25분(1500초) 선택
+        runtime.wheelSubject.onNext(1500)
+
+        // Then
+        let settle = expectation(description: "settle")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { settle.fulfill() }
+        wait(for: [settle], timeout: 1.0)
+
+        XCTAssertEqual(captured.last, "25:00")
+    }
+
+    func test_wheelDurationChanged_shouldClampToMaxDuration_whenExceedingMax() {
+        // Given: maxDuration 60분
+        let useCase = FocusSessionUseCaseStub()
+        let sut = FocusViewModel(useCase: useCase, maxDuration: 60 * 60)
+        let runtime = bind(sut)
+        let runningExp = expectIsRunningBecomesTrue(runtime.output)
+
+        // When: 상한 초과값(60분 30초) 주입 후 start
+        runtime.wheelSubject.onNext(3630)
+        runtime.startSubject.onNext(())
+
+        // Then: VM 이중 방어로 maxDuration 으로 clamp 된 값이 start 에 전달
+        wait(for: [runningExp], timeout: 1.0)
+        XCTAssertEqual(useCase.lastStartedDuration, 3600)
+    }
+
+    func test_wheelDurationChanged_shouldBeIgnored_whenRunning() {
+        // Given: 다이얼 0.5 (1800초) 로 start
+        let useCase = FocusSessionUseCaseStub()
+        let sut = FocusViewModel(useCase: useCase, maxDuration: 60 * 60)
+        let runtime = bind(sut)
+        let runningExp = expectIsRunningBecomesTrue(runtime.output)
+
+        runtime.dialSubject.onNext(0.5)
+        runtime.startSubject.onNext(())
+        wait(for: [runningExp], timeout: 1.0)
+
+        // When: 진행 중에 휠 입력
+        runtime.wheelSubject.onNext(900)
+
+        let settle = expectation(description: "settle")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { settle.fulfill() }
+        wait(for: [settle], timeout: 1.0)
+
+        // Then: 시작 duration 그대로 (입력 잠금)
+        XCTAssertEqual(useCase.lastStartedDuration, 1800)
+    }
+
+    // MARK: - wheelDuration output
+
+    func test_wheelDuration_shouldEqualSelectedDuration_whenIdle() {
+        // Given
+        let useCase = FocusSessionUseCaseStub()
+        let sut = FocusViewModel(useCase: useCase, maxDuration: 60 * 60)
+        let runtime = bind(sut)
+
+        var captured: [TimeInterval] = []
+        runtime.output.wheelDuration
+            .drive(onNext: { captured.append($0) })
+            .disposed(by: disposeBag)
+
+        // When: 휠에서 25분 30초 선택
+        runtime.wheelSubject.onNext(1530)
+
+        // Then
+        let settle = expectation(description: "settle")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { settle.fulfill() }
+        wait(for: [settle], timeout: 1.0)
+
+        XCTAssertEqual(captured.last, 1530)
+    }
+
+    func test_dialRatioChanged_shouldUpdateWheelDurationOutput_whenIdle() {
+        // Given: 다이얼 입력이 휠 표시값으로 흘러야 두 모드가 같은 상태를 비춘다
+        let useCase = FocusSessionUseCaseStub()
+        let sut = FocusViewModel(useCase: useCase, maxDuration: 60 * 60)
+        let runtime = bind(sut)
+
+        var captured: [TimeInterval] = []
+        runtime.output.wheelDuration
+            .drive(onNext: { captured.append($0) })
+            .disposed(by: disposeBag)
+
+        // When: 다이얼 ratio 0.5 (30분)
+        runtime.dialSubject.onNext(0.5)
+
+        // Then
+        let settle = expectation(description: "settle")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { settle.fulfill() }
+        wait(for: [settle], timeout: 1.0)
+
+        XCTAssertEqual(captured.last, 1800)
+    }
+
+    func test_wheelDuration_shouldCountDownRemaining_whenRunning() {
+        // Given: 30초 세션 start (1초 tick 후 remaining 감소 관찰)
+        let useCase = FocusSessionUseCaseStub()
+        let sut = FocusViewModel(useCase: useCase, maxDuration: 60)
+        let runtime = bind(sut)
+        let runningExp = expectIsRunningBecomesTrue(runtime.output)
+
+        runtime.wheelSubject.onNext(30)
+        runtime.startSubject.onNext(())
+        wait(for: [runningExp], timeout: 1.0)
+
+        var captured: [TimeInterval] = []
+        let decreased = expectation(description: "wheelDuration decreased below 30")
+        runtime.output.wheelDuration
+            .drive(onNext: { value in
+                captured.append(value)
+                if value < 30 { decreased.fulfill() }
+            })
+            .disposed(by: disposeBag)
+
+        // When: 1초 tick 대기
+        // Then: 남은 시간(30 미만)으로 감소
+        wait(for: [decreased], timeout: 2.0)
+        XCTAssertEqual(captured.last, 29)
+    }
+
+    // MARK: - mode
+
+    func test_modeChanged_shouldUpdateModeOutput_whenIdle() {
+        // Given
+        let useCase = FocusSessionUseCaseStub()
+        let sut = FocusViewModel(useCase: useCase, maxDuration: 60 * 60)
+        let runtime = bind(sut)
+
+        var captured: [FocusMode] = []
+        runtime.output.mode
+            .drive(onNext: { captured.append($0) })
+            .disposed(by: disposeBag)
+
+        // When
+        runtime.modeSubject.onNext(.digital)
+
+        // Then: 초기 .dial → .digital
+        let settle = expectation(description: "settle")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { settle.fulfill() }
+        wait(for: [settle], timeout: 1.0)
+
+        XCTAssertEqual(captured, [.dial, .digital])
+    }
+
+    func test_modeChanged_shouldUpdateModeOutput_whenRunning() {
+        // Given: 모드는 순수 뷰 토글 — 실행 중에도 전환이 허용돼야 한다
+        let useCase = FocusSessionUseCaseStub()
+        let sut = FocusViewModel(useCase: useCase, maxDuration: 60 * 60)
+        let runtime = bind(sut)
+        let runningExp = expectIsRunningBecomesTrue(runtime.output)
+
+        runtime.dialSubject.onNext(0.5)
+        runtime.startSubject.onNext(())
+        wait(for: [runningExp], timeout: 1.0)
+
+        var captured: [FocusMode] = []
+        runtime.output.mode
+            .drive(onNext: { captured.append($0) })
+            .disposed(by: disposeBag)
+
+        // When: 진행 중 digital 전환
+        runtime.modeSubject.onNext(.digital)
+
+        // Then
+        let settle = expectation(description: "settle")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { settle.fulfill() }
+        wait(for: [settle], timeout: 1.0)
+
+        XCTAssertEqual(captured.last, .digital)
+    }
+
+    func test_start_shouldKeepCurrentMode_whenStartedFromDigital() {
+        // Given: digital 모드에서 시작해도 자동 전환 없이 유지돼야 한다
+        let useCase = FocusSessionUseCaseStub()
+        let sut = FocusViewModel(useCase: useCase, maxDuration: 60 * 60)
+        let runtime = bind(sut)
+        let runningExp = expectIsRunningBecomesTrue(runtime.output)
+
+        var captured: [FocusMode] = []
+        runtime.output.mode
+            .drive(onNext: { captured.append($0) })
+            .disposed(by: disposeBag)
+
+        runtime.modeSubject.onNext(.digital)
+        runtime.wheelSubject.onNext(1500)
+
+        // When
+        runtime.startSubject.onNext(())
+        wait(for: [runningExp], timeout: 1.0)
+
+        // Then
+        let settle = expectation(description: "settle")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { settle.fulfill() }
+        wait(for: [settle], timeout: 1.0)
+
+        XCTAssertEqual(captured.last, .digital)
+    }
+
+    // MARK: - goal
+
+    func test_start_shouldUseWheelDuration_whenSetViaWheel() {
+        // Given
+        let useCase = FocusSessionUseCaseStub()
+        let sut = FocusViewModel(useCase: useCase, maxDuration: 60 * 60)
+        let runtime = bind(sut)
+        let runningExp = expectIsRunningBecomesTrue(runtime.output)
+
+        // When: 휠에서 15분(900초) 선택 후 start
+        runtime.wheelSubject.onNext(900)
+        runtime.startSubject.onNext(())
+
+        // Then
+        wait(for: [runningExp], timeout: 1.0)
+        XCTAssertEqual(useCase.lastStartedDuration, 900)
+    }
+
+    func test_start_shouldPassTrimmedGoal_whenGoalHasWhitespace() {
+        // Given
+        let useCase = FocusSessionUseCaseStub()
+        let sut = FocusViewModel(useCase: useCase, maxDuration: 60 * 60)
+        let runtime = bind(sut)
+        let runningExp = expectIsRunningBecomesTrue(runtime.output)
+
+        runtime.goalSubject.onNext("  Deep Work  ")
+        runtime.dialSubject.onNext(0.5)
+
+        // When
+        runtime.startSubject.onNext(())
+
+        // Then: 앞뒤 공백 제거된 goal 이 UseCase 로 전달
+        wait(for: [runningExp], timeout: 1.0)
+        XCTAssertEqual(useCase.lastStartedGoal?.title, "Deep Work")
+    }
+
+    func test_start_shouldPassNilGoal_whenGoalIsWhitespaceOnly() {
+        // Given: 공백만 있는 입력은 goal 없음으로 취급
+        let useCase = FocusSessionUseCaseStub()
+        let sut = FocusViewModel(useCase: useCase, maxDuration: 60 * 60)
+        let runtime = bind(sut)
+        let runningExp = expectIsRunningBecomesTrue(runtime.output)
+
+        runtime.goalSubject.onNext("   ")
+        runtime.dialSubject.onNext(0.5)
+
+        // When
+        runtime.startSubject.onNext(())
+
+        // Then
+        wait(for: [runningExp], timeout: 1.0)
+        XCTAssertEqual(useCase.startCallCount, 1)
+        XCTAssertNil(useCase.lastStartedGoal)
+    }
+
     // MARK: - timeText
 
     func test_timeText_shouldEmitZero_initially() {
@@ -395,6 +662,9 @@ final class FocusViewModelTests: XCTestCase {
 
     private struct Runtime {
         let dialSubject: PublishSubject<CGFloat>
+        let wheelSubject: PublishSubject<TimeInterval>
+        let modeSubject: PublishSubject<FocusMode>
+        let goalSubject: PublishSubject<String?>
         let startSubject: PublishSubject<Void>
         let pauseSubject: PublishSubject<Void>
         let resumeSubject: PublishSubject<Void>
@@ -404,12 +674,18 @@ final class FocusViewModelTests: XCTestCase {
 
     private func bind(_ viewModel: FocusViewModel) -> Runtime {
         let dialSubject = PublishSubject<CGFloat>()
+        let wheelSubject = PublishSubject<TimeInterval>()
+        let modeSubject = PublishSubject<FocusMode>()
+        let goalSubject = PublishSubject<String?>()
         let startSubject = PublishSubject<Void>()
         let pauseSubject = PublishSubject<Void>()
         let resumeSubject = PublishSubject<Void>()
         let cancelSubject = PublishSubject<Void>()
         let output = viewModel.transform(input: .init(
             dialRatioChanged: dialSubject.asObservable(),
+            wheelDurationChanged: wheelSubject.asObservable(),
+            modeChanged: modeSubject.asObservable(),
+            goalChanged: goalSubject.asObservable(),
             startTapped: startSubject.asObservable(),
             pauseTapped: pauseSubject.asObservable(),
             resumeTapped: resumeSubject.asObservable(),
@@ -417,6 +693,9 @@ final class FocusViewModelTests: XCTestCase {
         ))
         return Runtime(
             dialSubject: dialSubject,
+            wheelSubject: wheelSubject,
+            modeSubject: modeSubject,
+            goalSubject: goalSubject,
             startSubject: startSubject,
             pauseSubject: pauseSubject,
             resumeSubject: resumeSubject,
