@@ -5,10 +5,15 @@ import SnapKit
 
 // MARK: - FocusViewController
 
-/// Visual Dial 타이머 화면.
+/// Focus 타이머 화면.
 ///
+/// - 모드 토글: navigation bar 의 세그먼트로 Visual Dial ↔ Digital 을 전환한다.
+///   모드는 표시 방식일 뿐이라 실행 중에도 전환 가능 — 링과 휠 모두 같은 세션을
+///   라이브로 비춘다 (링 감소 + 휠 tick down). 실행 중에는 *입력*만 잠근다.
 /// - 원형 다이얼: `CircularProgressRingView`. knob 을 PanGesture 로 돌려 시간 설정.
+/// - 휠 피커: `TimeWheelPickerView`. 분/초 정밀 입력 (Digital Mode).
 /// - 시간 라벨: idle 에서는 설정한 시간, 진행 중에는 남은 시간 ("MM:SS").
+/// - Goal 필드: 하단 텍스트필드. keyboardLayoutGuide 제약으로 키보드를 따라 올라온다.
 /// - 컨트롤: 단일 `primaryButton` 이 상태에 따라 텍스트/액션이 바뀐다.
 ///   - idle:   "Start"  → 세션 시작
 ///   - running:"Pause"  → 일시정지
@@ -41,7 +46,20 @@ final class FocusViewController: UIViewController {
 
     // MARK: - UI
 
+    private let modeSegmentedControl: UISegmentedControl = {
+        let control = UISegmentedControl(items: [FocusMode.dial, FocusMode.digital].map(\.title))
+        control.selectedSegmentIndex = FocusMode.dial.rawValue
+        return control
+    }()
+
     private let ringView = CircularProgressRingView()
+
+    /// 생성에 viewModel 이 필요해 lazy. 초기 모드가 dial 이라 바인딩 전 플래시 방지로 숨긴다.
+    private lazy var wheelPickerView: TimeWheelPickerView = {
+        let picker = TimeWheelPickerView(maxDuration: viewModel.wheelMaxDuration)
+        picker.isHidden = true
+        return picker
+    }()
 
     private let timeLabel: UILabel = {
         let label = UILabel()
@@ -49,6 +67,15 @@ final class FocusViewController: UIViewController {
         label.textAlignment = .center
         label.text = "00:00"
         return label
+    }()
+
+    private let goalTextField: UITextField = {
+        let field = UITextField()
+        field.placeholder = "Session Goal (Optional)"
+        field.borderStyle = .roundedRect
+        field.returnKeyType = .done
+        field.clearButtonMode = .whileEditing
+        return field
     }()
 
     private let primaryButton: UIButton = {
@@ -92,11 +119,14 @@ final class FocusViewController: UIViewController {
 
     private func setupUI() {
         view.backgroundColor = .systemBackground
+        navigationItem.titleView = modeSegmentedControl
 
         view.addSubview(ringView)
         ringView.addSubview(timeLabel)
+        view.addSubview(wheelPickerView)
         view.addSubview(cancelButton)
         view.addSubview(primaryButton)
+        view.addSubview(goalTextField)
 
         ringView.snp.makeConstraints { make in
             make.centerX.equalTo(view.safeAreaLayoutGuide)
@@ -105,6 +135,12 @@ final class FocusViewController: UIViewController {
         }
         timeLabel.snp.makeConstraints { make in
             make.center.equalToSuperview()
+        }
+        // 휠은 다이얼과 같은 슬롯을 공유한다 (모드에 따라 isHidden 토글).
+        // 높이는 UIPickerView intrinsic(216pt)에 위임.
+        wheelPickerView.snp.makeConstraints { make in
+            make.center.equalTo(ringView)
+            make.width.equalTo(ringView)
         }
         // 기본 위치: primaryButton 가운데, cancelButton 그 왼쪽.
         primaryButton.snp.makeConstraints { make in
@@ -119,12 +155,22 @@ final class FocusViewController: UIViewController {
             make.height.equalTo(primaryButton)
             make.width.equalTo(120)
         }
+        // 하단 고정 + 키보드 상승: keyboardLayoutGuide 는 키보드가 없으면
+        // safe area 하단과 일치하므로 별도 키보드 옵저버가 필요 없다.
+        goalTextField.snp.makeConstraints { make in
+            make.leading.trailing.equalTo(view.safeAreaLayoutGuide).inset(24)
+            make.bottom.equalTo(view.keyboardLayoutGuide.snp.top).offset(-16)
+            make.height.equalTo(44)
+        }
     }
 
     private func setupRingViewCallbacks() {
         ringView.snapStep = viewModel.ringSnapStep
         ringView.onRatioChanged = { [weak self] ratio in
             self?.dialRatioSubject.onNext(ratio)
+        }
+        wheelPickerView.onDurationChanged = { [weak self] duration in
+            self?.wheelDurationSubject.onNext(duration)
         }
     }
 
@@ -146,9 +192,9 @@ final class FocusViewController: UIViewController {
         let input = FocusViewModel.Input(
             dialRatioChanged: dialRatioSubject.asObservable(),
             wheelDurationChanged: wheelDurationSubject.asObservable(),
-            // 세그먼트/goal 필드 UI 는 다음 커밋에서 연결한다. 그 전까지는 무이벤트.
-            modeChanged: .never(),
-            goalChanged: .never(),
+            modeChanged: modeSegmentedControl.rx.selectedSegmentIndex
+                .compactMap(FocusMode.init(rawValue:)),
+            goalChanged: goalTextField.rx.text.asObservable(),
             startTapped: startSubject.asObservable(),
             pauseTapped: pauseSubject.asObservable(),
             resumeTapped: resumeSubject.asObservable(),
@@ -164,8 +210,35 @@ final class FocusViewController: UIViewController {
             })
             .disposed(by: disposeBag)
 
+        // 휠도 링과 동일하게 상시 동기화한다 — 숨겨진 모드에서도 최신값을 유지해
+        // 전환 순간 catch-up 없이 값이 연속된다. running 중에는 row 스크롤 애니메이션으로 tick.
+        // setDuration 은 콜백을 발화하지 않으므로 (programmatic selectRow 규약) 루프 없음.
+        Driver.combineLatest(output.wheelDuration, output.isRunning)
+            .drive(onNext: { [weak self] duration, running in
+                self?.wheelPickerView.setDuration(duration, animated: running)
+            })
+            .disposed(by: disposeBag)
+
+        // 모드 전환: 세그먼트 인덱스 동기화 + 다이얼/휠 표시 토글.
+        // programmatic selectedSegmentIndex 설정은 .valueChanged 를 발사하지 않아 루프 없음.
+        output.mode
+            .drive(onNext: { [weak self] mode in
+                guard let self else { return }
+                self.modeSegmentedControl.selectedSegmentIndex = mode.rawValue
+                self.ringView.isHidden = (mode == .digital)
+                self.wheelPickerView.isHidden = (mode == .dial)
+            })
+            .disposed(by: disposeBag)
+
         output.timeText
             .drive(timeLabel.rx.text)
+            .disposed(by: disposeBag)
+
+        // Done 키로 키보드 dismiss.
+        goalTextField.rx.controlEvent(.editingDidEndOnExit)
+            .subscribe(onNext: { [weak self] in
+                self?.goalTextField.resignFirstResponder()
+            })
             .disposed(by: disposeBag)
 
         // running/paused 조합으로 currentState 갱신 + 버튼 텍스트/노출 토글
@@ -178,9 +251,11 @@ final class FocusViewController: UIViewController {
             })
             .disposed(by: disposeBag)
 
+        // 실행 중 입력 잠금은 다이얼·휠 공통. 모드 전환(세그먼트)은 잠그지 않는다.
         output.isDialEnabled
             .drive(onNext: { [weak self] enabled in
                 self?.ringView.isDialEnabled = enabled
+                self?.wheelPickerView.isUserInteractionEnabled = enabled
             })
             .disposed(by: disposeBag)
 
@@ -196,12 +271,17 @@ final class FocusViewController: UIViewController {
         case .idle:
             primaryButton.setTitle("Start", for: .normal)
             cancelButton.isHidden = true
+            goalTextField.isEnabled = true
         case .running:
             primaryButton.setTitle("Pause", for: .normal)
             cancelButton.isHidden = false
+            goalTextField.isEnabled = false
+            // 키보드가 열린 채 start 된 경우를 정리한다.
+            view.endEditing(true)
         case .paused:
             primaryButton.setTitle("Resume", for: .normal)
             cancelButton.isHidden = false
+            goalTextField.isEnabled = false
         }
     }
 
