@@ -69,7 +69,9 @@ final class FocusViewModel {
     // MARK: - Transform
 
     func transform(input: Input) -> Output {
-        let selectedRatioRelay = BehaviorRelay<CGFloat>(value: 0)
+        // 사용자가 고른 목표 시간(초). 다이얼 ratio는 VM 경계에서 duration 으로 환산해
+        // 단일 진실 원천으로 관리한다 (휠 등 다른 입력 수단이 같은 상태를 공유하기 위함).
+        let selectedDurationRelay = BehaviorRelay<TimeInterval>(value: 0)
         let isRunningRelay = BehaviorRelay<Bool>(value: false)
         let isPausedRelay = BehaviorRelay<Bool>(value: false)
         let activeSessionRelay = BehaviorRelay<FocusSession?>(value: nil)
@@ -80,14 +82,14 @@ final class FocusViewModel {
             dialRatioChanged: input.dialRatioChanged,
             isRunningRelay: isRunningRelay,
             isPausedRelay: isPausedRelay,
-            selectedRatioRelay: selectedRatioRelay
+            selectedDurationRelay: selectedDurationRelay
         )
 
         bindStart(
             startTapped: input.startTapped,
             isRunningRelay: isRunningRelay,
             isPausedRelay: isPausedRelay,
-            selectedRatioRelay: selectedRatioRelay,
+            selectedDurationRelay: selectedDurationRelay,
             activeSessionRelay: activeSessionRelay,
             elapsedRelay: elapsedRelay,
             errorSubject: errorSubject
@@ -124,24 +126,25 @@ final class FocusViewModel {
         )
 
         let ringRatio = Observable
-            .combineLatest(selectedRatioRelay, elapsedRelay, activeSessionRelay)
-            .map { [maxDuration] ratio, elapsed, session -> CGFloat in
+            .combineLatest(selectedDurationRelay, elapsedRelay, activeSessionRelay)
+            .map { [maxDuration] duration, elapsed, session -> CGFloat in
+                guard maxDuration > 0 else { return 0 }
                 // 진행 중에는 (남은 시간 / 다이얼 최대 시간) 으로 계산해야
-                // 시작 직후 사용자가 설정한 위치(selectedRatio)에서 그대로 출발한다.
+                // 시작 직후 사용자가 설정한 위치에서 그대로 출발한다.
                 // 분모를 session.duration 으로 두면 항상 1.0 에서 출발하는 점프가 생긴다.
-                guard let session, maxDuration > 0 else { return ratio }
+                guard let session else { return CGFloat(duration / maxDuration) }
                 let remaining = max(session.duration - elapsed, 0)
                 return CGFloat(remaining / maxDuration)
             }
             .asDriver(onErrorJustReturn: 0)
 
         let timeText = Observable
-            .combineLatest(selectedRatioRelay, elapsedRelay, activeSessionRelay)
-            .map { [maxDuration] ratio, elapsed, session -> String in
+            .combineLatest(selectedDurationRelay, elapsedRelay, activeSessionRelay)
+            .map { duration, elapsed, session -> String in
                 if let session {
                     return Self.format(seconds: max(session.duration - elapsed, 0))
                 }
-                return Self.format(seconds: maxDuration * TimeInterval(ratio))
+                return Self.format(seconds: duration)
             }
             .asDriver(onErrorJustReturn: "00:00")
 
@@ -166,15 +169,17 @@ final class FocusViewModel {
         dialRatioChanged: Observable<CGFloat>,
         isRunningRelay: BehaviorRelay<Bool>,
         isPausedRelay: BehaviorRelay<Bool>,
-        selectedRatioRelay: BehaviorRelay<CGFloat>
+        selectedDurationRelay: BehaviorRelay<TimeInterval>
     ) {
+        let maxDuration = self.maxDuration
+
         dialRatioChanged
             .withLatestFrom(Observable.combineLatest(isRunningRelay, isPausedRelay)) {
                 ratio, running_paused in (ratio, running_paused.0, running_paused.1)
             }
             .filter { _, running, paused in !running && !paused } // idle 일 때만 다이얼 입력 수용
-            .map { ratio, _, _ in ratio }
-            .bind(to: selectedRatioRelay)
+            .map { ratio, _, _ in maxDuration * TimeInterval(ratio) }
+            .bind(to: selectedDurationRelay)
             .disposed(by: disposeBag)
     }
 
@@ -182,18 +187,17 @@ final class FocusViewModel {
         startTapped: Observable<Void>,
         isRunningRelay: BehaviorRelay<Bool>,
         isPausedRelay: BehaviorRelay<Bool>,
-        selectedRatioRelay: BehaviorRelay<CGFloat>,
+        selectedDurationRelay: BehaviorRelay<TimeInterval>,
         activeSessionRelay: BehaviorRelay<FocusSession?>,
         elapsedRelay: BehaviorRelay<TimeInterval>,
         errorSubject: PublishSubject<Error>
     ) {
         let useCase = self.useCase
-        let maxDuration = self.maxDuration
 
         startTapped
-            .withLatestFrom(Observable.combineLatest(isRunningRelay, isPausedRelay, selectedRatioRelay))
-            .filter { running, paused, ratio in !running && !paused && ratio > 0 }
-            .map { _, _, ratio in maxDuration * TimeInterval(ratio) }
+            .withLatestFrom(Observable.combineLatest(isRunningRelay, isPausedRelay, selectedDurationRelay))
+            .filter { running, paused, duration in !running && !paused && duration > 0 }
+            .map { _, _, duration in duration }
             .flatMapLatest { duration -> Observable<Event<FocusSession>> in
                 Self.singleFromAsync { try await useCase.start(duration: duration, goal: nil) }
                     .materialize()
