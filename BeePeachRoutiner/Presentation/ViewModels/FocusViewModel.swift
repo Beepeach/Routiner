@@ -4,17 +4,18 @@ import RxCocoa
 
 // MARK: - FocusViewModel
 
-/// Visual Dial 화면의 ViewModel. Input/Output 패턴.
+/// Focus 화면의 ViewModel. Input/Output 패턴.
 ///
 /// 인터랙션 흐름:
-/// 1. **idle**: 사용자가 다이얼 knob을 돌려 ratio (0~1) 를 정한다.
-///    화면에는 `selectedRatio * maxDuration` 시간이 표시된다.
-/// 2. **start**: 그 시점의 duration으로 `FocusSessionUseCase.start` 호출.
+/// 1. **idle**: 사용자가 다이얼 knob(ratio) 또는 휠 피커(분/초)로 duration 을 정한다.
+///    두 입력 모두 `selectedDuration` 단일 상태로 합류한다. goal 텍스트도 이때 입력.
+/// 2. **start**: 그 시점의 duration/goal 로 `FocusSessionUseCase.start` 호출.
 ///    성공 시 isRunning=true, elapsed=0.
-/// 3. **running**: 1초 간격 timer로 elapsed 증가. 링은 카운트다운(1→0).
-///    시간 라벨은 `duration - elapsed` 로 줄어든다. 다이얼은 잠금.
+/// 3. **running**: 1초 간격 timer로 elapsed 증가. 링/휠/라벨 모두 남은 시간을
+///    라이브로 비춘다 — 모드(dial/digital)는 표시 방식일 뿐이라 전환은 항상 허용,
+///    다이얼·휠 *입력*만 잠근다.
 /// 4. **cancel**: `FocusSessionUseCase.cancel` 호출. 성공 시 idle 로 복귀하되
-///    `selectedRatio` 는 유지(사용자 의도 보존).
+///    `selectedDuration` 은 유지(사용자 의도 보존).
 final class FocusViewModel {
 
     // MARK: - Input / Output
@@ -22,6 +23,12 @@ final class FocusViewModel {
     struct Input {
         /// 사용자가 다이얼 knob을 회전시킬 때마다 발사되는 ratio (0~1).
         let dialRatioChanged: Observable<CGFloat>
+        /// 사용자가 휠 피커에서 고른 duration(초). Digital Mode 입력.
+        let wheelDurationChanged: Observable<TimeInterval>
+        /// 사용자가 세그먼트로 고른 표시 모드.
+        let modeChanged: Observable<FocusMode>
+        /// Goal 텍스트필드 내용. trim/nil 정규화는 VM 책임.
+        let goalChanged: Observable<String?>
         let startTapped: Observable<Void>
         let pauseTapped: Observable<Void>
         let resumeTapped: Observable<Void>
@@ -31,13 +38,19 @@ final class FocusViewModel {
     struct Output {
         /// 링이 표시할 ratio (0~1). idle 에서는 사용자 설정값, 진행 중에는 (남은 시간 / maxDuration).
         let ringRatio: Driver<CGFloat>
+        /// 휠이 표시할 시간(초). idle 에서는 사용자 설정값, 진행 중에는 남은 시간.
+        /// ringRatio 와 대칭 — 모드는 표시 방식일 뿐이라 두 뷰가 같은 상태를 라이브로 비춘다.
+        let wheelDuration: Driver<TimeInterval>
         /// 시간 라벨. idle 에서는 설정한 duration, 진행 중에는 남은 시간.
         let timeText: Driver<String>
+        /// 현재 표시 모드. 세그먼트 인덱스/뷰 토글 동기화용.
+        let mode: Driver<FocusMode>
         /// 세션이 active 진행 중인지. timer 가 카운트다운하는 상태.
         let isRunning: Driver<Bool>
         /// 세션이 일시정지 상태인지. timer 는 멈춤, 시간/ringRatio 는 그대로.
         let isPaused: Driver<Bool>
-        /// 다이얼 인터랙션 활성화 여부. running/paused 모두 false 로 잠근다.
+        /// 다이얼/휠 인터랙션 활성화 여부. running/paused 모두 false 로 잠근다.
+        /// 입력만 잠글 뿐 모드 전환은 항상 허용된다.
         let isDialEnabled: Driver<Bool>
         /// UseCase 실패 시 흘러나오는 에러.
         let error: Driver<Error>
@@ -66,10 +79,17 @@ final class FocusViewModel {
         return CGFloat(60.0 / maxDuration)
     }
 
+    /// 휠 피커가 컴포넌트 범위를 파생할 최대 시간. ringSnapStep 과 동일한 주입 패턴.
+    var wheelMaxDuration: TimeInterval { maxDuration }
+
     // MARK: - Transform
 
     func transform(input: Input) -> Output {
-        let selectedRatioRelay = BehaviorRelay<CGFloat>(value: 0)
+        // 사용자가 고른 목표 시간(초). 다이얼 ratio는 VM 경계에서 duration 으로 환산해
+        // 단일 진실 원천으로 관리한다 (휠 등 다른 입력 수단이 같은 상태를 공유하기 위함).
+        let selectedDurationRelay = BehaviorRelay<TimeInterval>(value: 0)
+        let modeRelay = BehaviorRelay<FocusMode>(value: .dial)
+        let goalRelay = BehaviorRelay<String?>(value: nil)
         let isRunningRelay = BehaviorRelay<Bool>(value: false)
         let isPausedRelay = BehaviorRelay<Bool>(value: false)
         let activeSessionRelay = BehaviorRelay<FocusSession?>(value: nil)
@@ -80,14 +100,32 @@ final class FocusViewModel {
             dialRatioChanged: input.dialRatioChanged,
             isRunningRelay: isRunningRelay,
             isPausedRelay: isPausedRelay,
-            selectedRatioRelay: selectedRatioRelay
+            selectedDurationRelay: selectedDurationRelay
+        )
+
+        bindWheel(
+            wheelDurationChanged: input.wheelDurationChanged,
+            isRunningRelay: isRunningRelay,
+            isPausedRelay: isPausedRelay,
+            selectedDurationRelay: selectedDurationRelay
+        )
+
+        bindMode(
+            modeChanged: input.modeChanged,
+            modeRelay: modeRelay
+        )
+
+        bindGoal(
+            goalChanged: input.goalChanged,
+            goalRelay: goalRelay
         )
 
         bindStart(
             startTapped: input.startTapped,
             isRunningRelay: isRunningRelay,
             isPausedRelay: isPausedRelay,
-            selectedRatioRelay: selectedRatioRelay,
+            selectedDurationRelay: selectedDurationRelay,
+            goalRelay: goalRelay,
             activeSessionRelay: activeSessionRelay,
             elapsedRelay: elapsedRelay,
             errorSubject: errorSubject
@@ -124,24 +162,36 @@ final class FocusViewModel {
         )
 
         let ringRatio = Observable
-            .combineLatest(selectedRatioRelay, elapsedRelay, activeSessionRelay)
-            .map { [maxDuration] ratio, elapsed, session -> CGFloat in
+            .combineLatest(selectedDurationRelay, elapsedRelay, activeSessionRelay)
+            .map { [maxDuration] duration, elapsed, session -> CGFloat in
+                guard maxDuration > 0 else { return 0 }
                 // 진행 중에는 (남은 시간 / 다이얼 최대 시간) 으로 계산해야
-                // 시작 직후 사용자가 설정한 위치(selectedRatio)에서 그대로 출발한다.
+                // 시작 직후 사용자가 설정한 위치에서 그대로 출발한다.
                 // 분모를 session.duration 으로 두면 항상 1.0 에서 출발하는 점프가 생긴다.
-                guard let session, maxDuration > 0 else { return ratio }
+                guard let session else { return CGFloat(duration / maxDuration) }
                 let remaining = max(session.duration - elapsed, 0)
                 return CGFloat(remaining / maxDuration)
             }
             .asDriver(onErrorJustReturn: 0)
 
+        // 링과 동일 시멘틱의 휠 표시값: 진행 중에는 남은 시간, idle 에는 선택값.
+        // 모드는 표시 방식일 뿐이므로 두 뷰가 같은 세션을 라이브로 비춘다.
+        let wheelDuration = Observable
+            .combineLatest(selectedDurationRelay, elapsedRelay, activeSessionRelay)
+            .map { duration, elapsed, session -> TimeInterval in
+                guard let session else { return duration }
+                return max(session.duration - elapsed, 0)
+            }
+            .distinctUntilChanged()
+            .asDriver(onErrorJustReturn: 0)
+
         let timeText = Observable
-            .combineLatest(selectedRatioRelay, elapsedRelay, activeSessionRelay)
-            .map { [maxDuration] ratio, elapsed, session -> String in
+            .combineLatest(selectedDurationRelay, elapsedRelay, activeSessionRelay)
+            .map { duration, elapsed, session -> String in
                 if let session {
                     return Self.format(seconds: max(session.duration - elapsed, 0))
                 }
-                return Self.format(seconds: maxDuration * TimeInterval(ratio))
+                return Self.format(seconds: duration)
             }
             .asDriver(onErrorJustReturn: "00:00")
 
@@ -152,7 +202,9 @@ final class FocusViewModel {
 
         return Output(
             ringRatio: ringRatio,
+            wheelDuration: wheelDuration,
             timeText: timeText,
+            mode: modeRelay.asDriver().distinctUntilChanged(),
             isRunning: isRunningRelay.asDriver(),
             isPaused: isPausedRelay.asDriver(),
             isDialEnabled: isDialEnabled,
@@ -166,15 +218,62 @@ final class FocusViewModel {
         dialRatioChanged: Observable<CGFloat>,
         isRunningRelay: BehaviorRelay<Bool>,
         isPausedRelay: BehaviorRelay<Bool>,
-        selectedRatioRelay: BehaviorRelay<CGFloat>
+        selectedDurationRelay: BehaviorRelay<TimeInterval>
     ) {
+        let maxDuration = self.maxDuration
+
         dialRatioChanged
             .withLatestFrom(Observable.combineLatest(isRunningRelay, isPausedRelay)) {
                 ratio, running_paused in (ratio, running_paused.0, running_paused.1)
             }
             .filter { _, running, paused in !running && !paused } // idle 일 때만 다이얼 입력 수용
-            .map { ratio, _, _ in ratio }
-            .bind(to: selectedRatioRelay)
+            .map { ratio, _, _ in maxDuration * TimeInterval(ratio) }
+            .bind(to: selectedDurationRelay)
+            .disposed(by: disposeBag)
+    }
+
+    private func bindWheel(
+        wheelDurationChanged: Observable<TimeInterval>,
+        isRunningRelay: BehaviorRelay<Bool>,
+        isPausedRelay: BehaviorRelay<Bool>,
+        selectedDurationRelay: BehaviorRelay<TimeInterval>
+    ) {
+        let maxDuration = self.maxDuration
+
+        wheelDurationChanged
+            .withLatestFrom(Observable.combineLatest(isRunningRelay, isPausedRelay)) {
+                duration, running_paused in (duration, running_paused.0, running_paused.1)
+            }
+            .filter { _, running, paused in !running && !paused } // idle 일 때만 휠 입력 수용
+            // 뷰가 이미 clamp 하지만 VM 불변식을 뷰 정합성에 의존시키지 않는 이중 방어.
+            .map { duration, _, _ in max(0, min(duration, maxDuration)) }
+            .bind(to: selectedDurationRelay)
+            .disposed(by: disposeBag)
+    }
+
+    private func bindMode(
+        modeChanged: Observable<FocusMode>,
+        modeRelay: BehaviorRelay<FocusMode>
+    ) {
+        // 모드는 순수 뷰 토글이라 세션 상태와 무관하게 항상 수용한다.
+        modeChanged
+            .bind(to: modeRelay)
+            .disposed(by: disposeBag)
+    }
+
+    private func bindGoal(
+        goalChanged: Observable<String?>,
+        goalRelay: BehaviorRelay<String?>
+    ) {
+        // 공백만 남는 입력은 nil 로 정규화한다. goal 은 start 시점에만 소비되고
+        // 실행 중 편집 잠금은 View 책임이라 여기서 상태 filter 는 두지 않는다.
+        goalChanged
+            .map { text -> String? in
+                guard let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !trimmed.isEmpty else { return nil }
+                return trimmed
+            }
+            .bind(to: goalRelay)
             .disposed(by: disposeBag)
     }
 
@@ -182,20 +281,22 @@ final class FocusViewModel {
         startTapped: Observable<Void>,
         isRunningRelay: BehaviorRelay<Bool>,
         isPausedRelay: BehaviorRelay<Bool>,
-        selectedRatioRelay: BehaviorRelay<CGFloat>,
+        selectedDurationRelay: BehaviorRelay<TimeInterval>,
+        goalRelay: BehaviorRelay<String?>,
         activeSessionRelay: BehaviorRelay<FocusSession?>,
         elapsedRelay: BehaviorRelay<TimeInterval>,
         errorSubject: PublishSubject<Error>
     ) {
         let useCase = self.useCase
-        let maxDuration = self.maxDuration
 
         startTapped
-            .withLatestFrom(Observable.combineLatest(isRunningRelay, isPausedRelay, selectedRatioRelay))
-            .filter { running, paused, ratio in !running && !paused && ratio > 0 }
-            .map { _, _, ratio in maxDuration * TimeInterval(ratio) }
-            .flatMapLatest { duration -> Observable<Event<FocusSession>> in
-                Self.singleFromAsync { try await useCase.start(duration: duration, goal: nil) }
+            .withLatestFrom(
+                Observable.combineLatest(isRunningRelay, isPausedRelay, selectedDurationRelay, goalRelay)
+            )
+            .filter { running, paused, duration, _ in !running && !paused && duration > 0 }
+            .map { _, _, duration, goalTitle in (duration, goalTitle.map(FocusSessionGoal.init(title:))) }
+            .flatMapLatest { duration, goal -> Observable<Event<FocusSession>> in
+                Self.singleFromAsync { try await useCase.start(duration: duration, goal: goal) }
                     .materialize()
             }
             .subscribe(onNext: { event in
