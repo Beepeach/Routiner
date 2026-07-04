@@ -13,7 +13,6 @@ final class DefaultDIContainerTests: XCTestCase {
             id: UUID(),
             startedAt: Date(),
             duration: 1500,
-            goal: nil,
             status: .active,
             completedAt: nil
         )
@@ -34,7 +33,7 @@ final class DefaultDIContainerTests: XCTestCase {
         let useCase = sut.makeFocusSessionUseCase()
 
         // When: 실제 시계 기준 즉시 종료 → 60초 미만이므로 cancelled 로 기록 제외
-        let started = try await useCase.start(duration: 1500, goal: nil)
+        let started = try await useCase.start(duration: 1500)
         let ended = try await useCase.end(sessionId: started.id, workNote: "버려질 메모")
 
         // Then

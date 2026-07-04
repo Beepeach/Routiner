@@ -10,7 +10,6 @@ struct FocusSession: Sendable {
     let id: UUID
     let startedAt: Date
     let duration: TimeInterval  // 초 단위
-    let goal: FocusSessionGoal?
     var status: FocusSessionStatus
     var completedAt: Date?  // 진행 중에는 nil
     var accumulatedElapsed: TimeInterval = 0  // pause 제외 순수 running 시간

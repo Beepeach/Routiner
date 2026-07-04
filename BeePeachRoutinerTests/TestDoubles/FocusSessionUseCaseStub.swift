@@ -33,20 +33,17 @@ final class FocusSessionUseCaseStub: FocusSessionUseCase, @unchecked Sendable {
     private(set) var lastEndedSessionId: UUID?
     private(set) var lastEndedWorkNote: String?
     private(set) var lastStartedDuration: TimeInterval?
-    private(set) var lastStartedGoal: FocusSessionGoal?
 
     // MARK: - FocusSessionUseCase
 
-    func start(duration: TimeInterval, goal: FocusSessionGoal?) async throws -> FocusSession {
+    func start(duration: TimeInterval) async throws -> FocusSession {
         startCallCount += 1
         lastStartedDuration = duration
-        lastStartedGoal = goal
         if let error = startError { throw error }
         return FocusSession(
             id: UUID(),
             startedAt: Date(),
             duration: duration,
-            goal: goal,
             status: .active,
             completedAt: nil
         )
@@ -83,7 +80,6 @@ final class FocusSessionUseCaseStub: FocusSessionUseCase, @unchecked Sendable {
             id: sessionId,
             startedAt: Date(),
             duration: 60,
-            goal: nil,
             status: status,
             completedAt: marksEnd ? Date() : nil
         )

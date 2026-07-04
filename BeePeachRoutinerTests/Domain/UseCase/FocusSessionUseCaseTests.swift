@@ -5,20 +5,21 @@ final class FocusSessionUseCaseTests: XCTestCase {
 
     // MARK: - start
 
-    func test_start_shouldReturnActiveSession_whenCalled() async throws {
+    func test_start_shouldReturnActiveSessionWithEmptyAccumulation_whenCalled() async throws {
         // Given
         let stub = FocusSessionRepositoryStub()
         let sut = DefaultFocusSessionUseCase(repository: stub)
-        let goal = FocusSessionGoal(title: "Test")
 
         // When
-        let result = try await sut.start(duration: 1500, goal: goal)
+        let result = try await sut.start(duration: 1500)
 
         // Then
         XCTAssertEqual(result.status, .active)
         XCTAssertNil(result.completedAt)
         XCTAssertEqual(result.duration, 1500)
-        XCTAssertEqual(result.goal?.title, "Test")
+        XCTAssertEqual(result.accumulatedElapsed, 0)
+        XCTAssertNil(result.workNote)
+        XCTAssertEqual(result.pauseSegments, [])
         XCTAssertEqual(stub.activeSession?.id, result.id)
     }
 
@@ -31,7 +32,7 @@ final class FocusSessionUseCaseTests: XCTestCase {
 
         // When / Then
         do {
-            _ = try await sut.start(duration: 1500, goal: nil)
+            _ = try await sut.start(duration: 1500)
             XCTFail("Repository 에러가 전파되어야 합니다")
         } catch {
             XCTAssertTrue(error is StubError)
@@ -43,7 +44,7 @@ final class FocusSessionUseCaseTests: XCTestCase {
     func test_pause_shouldAccumulateElapsedAndAppendOpenSegment_whenActive() async throws {
         // Given
         let (sut, stub, clock) = makeSUT()
-        let session = try await sut.start(duration: 1500, goal: nil)
+        let session = try await sut.start(duration: 1500)
         clock.advance(by: 120)
 
         // When
@@ -62,7 +63,7 @@ final class FocusSessionUseCaseTests: XCTestCase {
     func test_pause_shouldThrowInvalidStatus_whenAlreadyPaused() async throws {
         // Given: 이미 paused — 재-pause 시 segment 중복·누적 이중 계산 방지
         let (sut, _, clock) = makeSUT()
-        let session = try await sut.start(duration: 1500, goal: nil)
+        let session = try await sut.start(duration: 1500)
         clock.advance(by: 30)
         _ = try await sut.pause(sessionId: session.id)
 
@@ -85,7 +86,7 @@ final class FocusSessionUseCaseTests: XCTestCase {
     func test_resume_shouldCloseLastSegment_whenPaused() async throws {
         // Given
         let (sut, stub, clock) = makeSUT()
-        let session = try await sut.start(duration: 1500, goal: nil)
+        let session = try await sut.start(duration: 1500)
         clock.advance(by: 120)
         _ = try await sut.pause(sessionId: session.id)
         clock.advance(by: 30)
@@ -108,7 +109,7 @@ final class FocusSessionUseCaseTests: XCTestCase {
     func test_resume_shouldThrowInvalidStatus_whenActive() async throws {
         // Given: pause 없이 바로 resume
         let (sut, _, _) = makeSUT()
-        let session = try await sut.start(duration: 1500, goal: nil)
+        let session = try await sut.start(duration: 1500)
 
         // When / Then
         await assertThrowsFocusSessionError(.invalidStatus) {
@@ -121,7 +122,7 @@ final class FocusSessionUseCaseTests: XCTestCase {
     func test_end_shouldMarkCancelledAndDropWorkNote_whenElapsedUnder60Seconds() async throws {
         // Given
         let (sut, stub, clock) = makeSUT()
-        let session = try await sut.start(duration: 1500, goal: nil)
+        let session = try await sut.start(duration: 1500)
         clock.advance(by: 58)
 
         // When
@@ -138,7 +139,7 @@ final class FocusSessionUseCaseTests: XCTestCase {
     func test_end_shouldMarkCompletedAndSaveWorkNote_whenElapsedOver60SecondsWithoutPause() async throws {
         // Given: pause 이력이 없어도 startedAt부터 누적되어야 함 (spec 의사코드 버그 회귀 방지)
         let (sut, _, clock) = makeSUT()
-        let session = try await sut.start(duration: 1500, goal: nil)
+        let session = try await sut.start(duration: 1500)
         clock.advance(by: 62)
 
         // When
@@ -153,7 +154,7 @@ final class FocusSessionUseCaseTests: XCTestCase {
     func test_end_shouldMarkCompleted_whenElapsedExactly60Seconds() async throws {
         // Given: 경계값 — 정확히 60초는 completed
         let (sut, _, clock) = makeSUT()
-        let session = try await sut.start(duration: 1500, goal: nil)
+        let session = try await sut.start(duration: 1500)
         clock.advance(by: 60)
 
         // When
@@ -167,7 +168,7 @@ final class FocusSessionUseCaseTests: XCTestCase {
     func test_end_shouldAccumulateOnlyRunningTime_whenPausedAndResumedThreeTimes() async throws {
         // Given: run 30 → pause 10 → run 40 → pause 5 → run 20 → pause 7 → run 15
         let (sut, _, clock) = makeSUT()
-        let session = try await sut.start(duration: 1500, goal: nil)
+        let session = try await sut.start(duration: 1500)
         let plan: [(run: TimeInterval, pause: TimeInterval)] = [(30, 10), (40, 5), (20, 7)]
         for step in plan {
             clock.advance(by: step.run)
@@ -191,7 +192,7 @@ final class FocusSessionUseCaseTests: XCTestCase {
     func test_end_shouldNotAccumulateExtra_whenEndedWhilePaused() async throws {
         // Given: run 90 → pause → 50초 방치 후 paused 상태에서 end
         let (sut, _, clock) = makeSUT()
-        let session = try await sut.start(duration: 1500, goal: nil)
+        let session = try await sut.start(duration: 1500)
         clock.advance(by: 90)
         _ = try await sut.pause(sessionId: session.id)
         clock.advance(by: 50)
@@ -218,7 +219,7 @@ final class FocusSessionUseCaseTests: XCTestCase {
     func test_end_shouldThrowSessionMismatch_whenSessionIdDoesNotMatch() async throws {
         // Given
         let (sut, _, _) = makeSUT()
-        _ = try await sut.start(duration: 1500, goal: nil)
+        _ = try await sut.start(duration: 1500)
 
         // When / Then
         await assertThrowsFocusSessionError(.sessionMismatch) {

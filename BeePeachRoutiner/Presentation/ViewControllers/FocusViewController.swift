@@ -13,7 +13,6 @@ import SnapKit
 /// - 원형 다이얼: `CircularProgressRingView`. knob 을 PanGesture 로 돌려 시간 설정.
 /// - 휠 피커: `TimeWheelPickerView`. 분/초 정밀 입력 (Digital Mode).
 /// - 시간 라벨: idle 에서는 설정한 시간, 진행 중에는 남은 시간 ("MM:SS").
-/// - Goal 필드: 하단 텍스트필드. keyboardLayoutGuide 제약으로 키보드를 따라 올라온다.
 /// - 컨트롤: 단일 `primaryButton` 이 상태에 따라 텍스트/액션이 바뀐다.
 ///   - idle:   "Start"  → 세션 시작
 ///   - running:"Pause"  → 일시정지
@@ -69,15 +68,6 @@ final class FocusViewController: UIViewController {
         return label
     }()
 
-    private let goalTextField: UITextField = {
-        let field = UITextField()
-        field.placeholder = "Session Goal (Optional)"
-        field.borderStyle = .roundedRect
-        field.returnKeyType = .done
-        field.clearButtonMode = .whileEditing
-        return field
-    }()
-
     private let primaryButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle("Start", for: .normal)
@@ -126,7 +116,6 @@ final class FocusViewController: UIViewController {
         view.addSubview(wheelPickerView)
         view.addSubview(cancelButton)
         view.addSubview(primaryButton)
-        view.addSubview(goalTextField)
 
         ringView.snp.makeConstraints { make in
             make.centerX.equalTo(view.safeAreaLayoutGuide)
@@ -154,13 +143,6 @@ final class FocusViewController: UIViewController {
             make.centerY.equalTo(primaryButton)
             make.height.equalTo(primaryButton)
             make.width.equalTo(120)
-        }
-        // 하단 고정 + 키보드 상승: keyboardLayoutGuide 는 키보드가 없으면
-        // safe area 하단과 일치하므로 별도 키보드 옵저버가 필요 없다.
-        goalTextField.snp.makeConstraints { make in
-            make.leading.trailing.equalTo(view.safeAreaLayoutGuide).inset(24)
-            make.bottom.equalTo(view.keyboardLayoutGuide.snp.top).offset(-16)
-            make.height.equalTo(44)
         }
     }
 
@@ -194,7 +176,6 @@ final class FocusViewController: UIViewController {
             wheelDurationChanged: wheelDurationSubject.asObservable(),
             modeChanged: modeSegmentedControl.rx.selectedSegmentIndex
                 .compactMap(FocusMode.init(rawValue:)),
-            goalChanged: goalTextField.rx.text.asObservable(),
             startTapped: startSubject.asObservable(),
             pauseTapped: pauseSubject.asObservable(),
             resumeTapped: resumeSubject.asObservable(),
@@ -234,13 +215,6 @@ final class FocusViewController: UIViewController {
             .drive(timeLabel.rx.text)
             .disposed(by: disposeBag)
 
-        // Done 키로 키보드 dismiss.
-        goalTextField.rx.controlEvent(.editingDidEndOnExit)
-            .subscribe(onNext: { [weak self] in
-                self?.goalTextField.resignFirstResponder()
-            })
-            .disposed(by: disposeBag)
-
         // running/paused 조합으로 currentState 갱신 + 버튼 텍스트/노출 토글
         Driver.combineLatest(output.isRunning, output.isPaused)
             .drive(onNext: { [weak self] running, paused in
@@ -271,17 +245,12 @@ final class FocusViewController: UIViewController {
         case .idle:
             primaryButton.setTitle("Start", for: .normal)
             cancelButton.isHidden = true
-            goalTextField.isEnabled = true
         case .running:
             primaryButton.setTitle("Pause", for: .normal)
             cancelButton.isHidden = false
-            goalTextField.isEnabled = false
-            // 키보드가 열린 채 start 된 경우를 정리한다.
-            view.endEditing(true)
         case .paused:
             primaryButton.setTitle("Resume", for: .normal)
             cancelButton.isHidden = false
-            goalTextField.isEnabled = false
         }
     }
 

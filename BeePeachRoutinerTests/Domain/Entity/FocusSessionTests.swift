@@ -7,7 +7,6 @@ final class FocusSessionTests: XCTestCase {
         let id = UUID()
         let startedAt = Date()
         let duration: TimeInterval = 1500
-        let goal = FocusSessionGoal(title: "테스트 목표")
         let status: FocusSessionStatus = .active
 
         // When
@@ -15,7 +14,6 @@ final class FocusSessionTests: XCTestCase {
             id: id,
             startedAt: startedAt,
             duration: duration,
-            goal: goal,
             status: status,
             completedAt: nil
         )
@@ -24,7 +22,6 @@ final class FocusSessionTests: XCTestCase {
         XCTAssertEqual(session.id, id)
         XCTAssertEqual(session.startedAt, startedAt)
         XCTAssertEqual(session.duration, duration)
-        XCTAssertEqual(session.goal?.title, goal.title)
         XCTAssertEqual(session.status, status)
         XCTAssertNil(session.completedAt)
         XCTAssertEqual(session.accumulatedElapsed, 0)

@@ -3,7 +3,7 @@ import Foundation
 /// Focus Session 라이프사이클을 관장하는 UseCase
 ///
 /// - 동작:
-///   - `start(duration:goal:)`: 새 세션 생성 후 저장 (status = .active, completedAt = nil)
+///   - `start(duration:)`: 새 세션 생성 후 저장 (status = .active, completedAt = nil)
 ///   - `pause(sessionId:)`: 활성 세션 일시정지 — 마지막 running 구간을 accumulatedElapsed에 누적하고 열린 PauseSegment 추가
 ///   - `resume(sessionId:)`: 일시정지된 세션 재개 — 마지막 PauseSegment를 닫음
 ///   - `end(sessionId:workNote:)`: 세션 종료 — accumulatedElapsed 60초 미만이면 .cancelled(기록 제외), 이상이면 .completed
@@ -13,7 +13,7 @@ import Foundation
 ///   - `FocusSessionError.invalidStatus`: pause는 active, resume은 paused 상태에서만 허용
 ///   - Repository 접근 실패 시 Error
 protocol FocusSessionUseCase: Sendable {
-    func start(duration: TimeInterval, goal: FocusSessionGoal?) async throws -> FocusSession
+    func start(duration: TimeInterval) async throws -> FocusSession
     func pause(sessionId: UUID) async throws -> FocusSession
     func resume(sessionId: UUID) async throws -> FocusSession
     func end(sessionId: UUID, workNote: String?) async throws -> FocusSession
@@ -34,12 +34,11 @@ final class DefaultFocusSessionUseCase: FocusSessionUseCase {
         self.now = now
     }
 
-    func start(duration: TimeInterval, goal: FocusSessionGoal?) async throws -> FocusSession {
+    func start(duration: TimeInterval) async throws -> FocusSession {
         let session = FocusSession(
             id: UUID(),
             startedAt: now(),
             duration: duration,
-            goal: goal,
             status: .active,
             completedAt: nil
         )

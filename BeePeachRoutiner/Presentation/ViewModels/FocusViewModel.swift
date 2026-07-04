@@ -8,8 +8,8 @@ import RxCocoa
 ///
 /// 인터랙션 흐름:
 /// 1. **idle**: 사용자가 다이얼 knob(ratio) 또는 휠 피커(분/초)로 duration 을 정한다.
-///    두 입력 모두 `selectedDuration` 단일 상태로 합류한다. goal 텍스트도 이때 입력.
-/// 2. **start**: 그 시점의 duration/goal 로 `FocusSessionUseCase.start` 호출.
+///    두 입력 모두 `selectedDuration` 단일 상태로 합류한다.
+/// 2. **start**: 그 시점의 duration 으로 `FocusSessionUseCase.start` 호출.
 ///    성공 시 isRunning=true, elapsed=0.
 /// 3. **running**: 1초 간격 timer로 elapsed 증가. 링/휠/라벨 모두 남은 시간을
 ///    라이브로 비춘다 — 모드(dial/digital)는 표시 방식일 뿐이라 전환은 항상 허용,
@@ -29,8 +29,6 @@ final class FocusViewModel {
         let wheelDurationChanged: Observable<TimeInterval>
         /// 사용자가 세그먼트로 고른 표시 모드.
         let modeChanged: Observable<FocusMode>
-        /// Goal 텍스트필드 내용. trim/nil 정규화는 VM 책임.
-        let goalChanged: Observable<String?>
         let startTapped: Observable<Void>
         let pauseTapped: Observable<Void>
         let resumeTapped: Observable<Void>
@@ -91,7 +89,6 @@ final class FocusViewModel {
         // 단일 진실 원천으로 관리한다 (휠 등 다른 입력 수단이 같은 상태를 공유하기 위함).
         let selectedDurationRelay = BehaviorRelay<TimeInterval>(value: 0)
         let modeRelay = BehaviorRelay<FocusMode>(value: .dial)
-        let goalRelay = BehaviorRelay<String?>(value: nil)
         let isRunningRelay = BehaviorRelay<Bool>(value: false)
         let isPausedRelay = BehaviorRelay<Bool>(value: false)
         let activeSessionRelay = BehaviorRelay<FocusSession?>(value: nil)
@@ -117,17 +114,11 @@ final class FocusViewModel {
             modeRelay: modeRelay
         )
 
-        bindGoal(
-            goalChanged: input.goalChanged,
-            goalRelay: goalRelay
-        )
-
         bindStart(
             startTapped: input.startTapped,
             isRunningRelay: isRunningRelay,
             isPausedRelay: isPausedRelay,
             selectedDurationRelay: selectedDurationRelay,
-            goalRelay: goalRelay,
             activeSessionRelay: activeSessionRelay,
             elapsedRelay: elapsedRelay,
             errorSubject: errorSubject
@@ -263,28 +254,11 @@ final class FocusViewModel {
             .disposed(by: disposeBag)
     }
 
-    private func bindGoal(
-        goalChanged: Observable<String?>,
-        goalRelay: BehaviorRelay<String?>
-    ) {
-        // 공백만 남는 입력은 nil 로 정규화한다. goal 은 start 시점에만 소비되고
-        // 실행 중 편집 잠금은 View 책임이라 여기서 상태 filter 는 두지 않는다.
-        goalChanged
-            .map { text -> String? in
-                guard let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines),
-                      !trimmed.isEmpty else { return nil }
-                return trimmed
-            }
-            .bind(to: goalRelay)
-            .disposed(by: disposeBag)
-    }
-
     private func bindStart(
         startTapped: Observable<Void>,
         isRunningRelay: BehaviorRelay<Bool>,
         isPausedRelay: BehaviorRelay<Bool>,
         selectedDurationRelay: BehaviorRelay<TimeInterval>,
-        goalRelay: BehaviorRelay<String?>,
         activeSessionRelay: BehaviorRelay<FocusSession?>,
         elapsedRelay: BehaviorRelay<TimeInterval>,
         errorSubject: PublishSubject<Error>
@@ -293,12 +267,12 @@ final class FocusViewModel {
 
         startTapped
             .withLatestFrom(
-                Observable.combineLatest(isRunningRelay, isPausedRelay, selectedDurationRelay, goalRelay)
+                Observable.combineLatest(isRunningRelay, isPausedRelay, selectedDurationRelay)
             )
-            .filter { running, paused, duration, _ in !running && !paused && duration > 0 }
-            .map { _, _, duration, goalTitle in (duration, goalTitle.map(FocusSessionGoal.init(title:))) }
-            .flatMapLatest { duration, goal -> Observable<Event<FocusSession>> in
-                Self.singleFromAsync { try await useCase.start(duration: duration, goal: goal) }
+            .filter { running, paused, duration in !running && !paused && duration > 0 }
+            .map { _, _, duration in duration }
+            .flatMapLatest { duration -> Observable<Event<FocusSession>> in
+                Self.singleFromAsync { try await useCase.start(duration: duration) }
                     .materialize()
             }
             .subscribe(onNext: { event in
