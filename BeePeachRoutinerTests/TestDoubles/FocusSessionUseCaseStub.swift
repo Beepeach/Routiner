@@ -17,6 +17,7 @@ final class FocusSessionUseCaseStub: FocusSessionUseCase, @unchecked Sendable {
     var startError: Error?
     var cancelError: Error?
     var completeError: Error?
+    var endError: Error?
 
     // MARK: - Error Injection (pause/resume)
 
@@ -32,8 +33,11 @@ final class FocusSessionUseCaseStub: FocusSessionUseCase, @unchecked Sendable {
     private(set) var completeCallCount = 0
     private(set) var lastPausedSessionId: UUID?
     private(set) var lastResumedSessionId: UUID?
+    private(set) var endCallCount = 0
     private(set) var lastCancelledSessionId: UUID?
     private(set) var lastCompletedSessionId: UUID?
+    private(set) var lastEndedSessionId: UUID?
+    private(set) var lastEndedWorkNote: String?
     private(set) var lastStartedDuration: TimeInterval?
     private(set) var lastStartedGoal: FocusSessionGoal?
 
@@ -66,6 +70,14 @@ final class FocusSessionUseCaseStub: FocusSessionUseCase, @unchecked Sendable {
         lastResumedSessionId = sessionId
         if let error = resumeError { throw error }
         return ended(sessionId: sessionId, status: .active)
+    }
+
+    func end(sessionId: UUID, workNote: String?) async throws -> FocusSession {
+        endCallCount += 1
+        lastEndedSessionId = sessionId
+        lastEndedWorkNote = workNote
+        if let error = endError { throw error }
+        return ended(sessionId: sessionId, status: .completed)
     }
 
     func complete(sessionId: UUID) async throws -> FocusSession {

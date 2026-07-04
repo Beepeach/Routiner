@@ -6,6 +6,7 @@ import Foundation
 ///   - `start(duration:goal:)`: 새 세션 생성 후 저장 (status = .active, completedAt = nil)
 ///   - `pause(sessionId:)`: 활성 세션 일시정지 — 마지막 running 구간을 accumulatedElapsed에 누적하고 열린 PauseSegment 추가
 ///   - `resume(sessionId:)`: 일시정지된 세션 재개 — 마지막 PauseSegment를 닫음
+///   - `end(sessionId:workNote:)`: 세션 종료 — accumulatedElapsed 60초 미만이면 .cancelled(기록 제외), 이상이면 .completed
 ///   - `complete(sessionId:)`: 진행 중인 세션 완료 처리 (status = .completed, completedAt = now)
 ///   - `cancel(sessionId:)`: 진행 중인 세션 취소 처리 (status = .cancelled, completedAt = now)
 /// - Throws:
@@ -17,11 +18,15 @@ protocol FocusSessionUseCase: Sendable {
     func start(duration: TimeInterval, goal: FocusSessionGoal?) async throws -> FocusSession
     func pause(sessionId: UUID) async throws -> FocusSession
     func resume(sessionId: UUID) async throws -> FocusSession
+    func end(sessionId: UUID, workNote: String?) async throws -> FocusSession
     func complete(sessionId: UUID) async throws -> FocusSession
     func cancel(sessionId: UUID) async throws -> FocusSession
 }
 
 final class DefaultFocusSessionUseCase: FocusSessionUseCase {
+    /// 이 시간 미만의 세션은 종료 시 기록에서 제외(.cancelled)된다.
+    private static let minimumCompletedElapsed: TimeInterval = 60
+
     private let repository: FocusSessionRepository
     private let now: @Sendable () -> Date
 
@@ -67,6 +72,25 @@ final class DefaultFocusSessionUseCase: FocusSessionUseCase {
         // 불변식: .paused는 pause()에서만 만들어지므로 pauseSegments는 비어있지 않다
         session.pauseSegments[session.pauseSegments.count - 1].resumedAt = now()
         session.status = .active
+        try await repository.update(session)
+        return session
+    }
+
+    func end(sessionId: UUID, workNote: String?) async throws -> FocusSession {
+        var session = try await activeSession(matching: sessionId)
+        let endedAt = now()
+        // active면 마지막 running 구간을 누적. paused면 pause 시점에 이미 누적됨.
+        if session.status == .active {
+            session.accumulatedElapsed += endedAt.timeIntervalSince(session.lastRunStartedAt)
+        }
+        if session.accumulatedElapsed < Self.minimumCompletedElapsed {
+            session.status = .cancelled
+            session.workNote = nil  // 1분 미만은 작업 기록 제외
+        } else {
+            session.status = .completed
+            session.workNote = workNote
+        }
+        session.completedAt = endedAt
         try await repository.update(session)
         return session
     }

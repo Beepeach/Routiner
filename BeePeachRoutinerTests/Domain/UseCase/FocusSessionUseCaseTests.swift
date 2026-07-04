@@ -159,6 +159,116 @@ final class FocusSessionUseCaseTests: XCTestCase {
         }
     }
 
+    // MARK: - end
+
+    func test_end_shouldMarkCancelledAndDropWorkNote_whenElapsedUnder60Seconds() async throws {
+        // Given
+        let (sut, stub, clock) = makeSUT()
+        let session = try await sut.start(duration: 1500, goal: nil)
+        clock.advance(by: 58)
+
+        // When
+        let result = try await sut.end(sessionId: session.id, workNote: "버려질 메모")
+
+        // Then: 1분 미만은 기록 제외
+        XCTAssertEqual(result.status, .cancelled)
+        XCTAssertNil(result.workNote)
+        XCTAssertEqual(result.accumulatedElapsed, 58)
+        XCTAssertEqual(result.completedAt, session.startedAt.addingTimeInterval(58))
+        XCTAssertEqual(stub.activeSession?.status, .cancelled)
+    }
+
+    func test_end_shouldMarkCompletedAndSaveWorkNote_whenElapsedOver60SecondsWithoutPause() async throws {
+        // Given: pause 이력이 없어도 startedAt부터 누적되어야 함 (spec 의사코드 버그 회귀 방지)
+        let (sut, _, clock) = makeSUT()
+        let session = try await sut.start(duration: 1500, goal: nil)
+        clock.advance(by: 62)
+
+        // When
+        let result = try await sut.end(sessionId: session.id, workNote: "메모")
+
+        // Then
+        XCTAssertEqual(result.status, .completed)
+        XCTAssertEqual(result.workNote, "메모")
+        XCTAssertEqual(result.accumulatedElapsed, 62)
+    }
+
+    func test_end_shouldMarkCompleted_whenElapsedExactly60Seconds() async throws {
+        // Given: 경계값 — 정확히 60초는 completed
+        let (sut, _, clock) = makeSUT()
+        let session = try await sut.start(duration: 1500, goal: nil)
+        clock.advance(by: 60)
+
+        // When
+        let result = try await sut.end(sessionId: session.id, workNote: "경계")
+
+        // Then
+        XCTAssertEqual(result.status, .completed)
+        XCTAssertEqual(result.workNote, "경계")
+    }
+
+    func test_end_shouldAccumulateOnlyRunningTime_whenPausedAndResumedThreeTimes() async throws {
+        // Given: run 30 → pause 10 → run 40 → pause 5 → run 20 → pause 7 → run 15
+        let (sut, _, clock) = makeSUT()
+        let session = try await sut.start(duration: 1500, goal: nil)
+        let plan: [(run: TimeInterval, pause: TimeInterval)] = [(30, 10), (40, 5), (20, 7)]
+        for step in plan {
+            clock.advance(by: step.run)
+            _ = try await sut.pause(sessionId: session.id)
+            clock.advance(by: step.pause)
+            _ = try await sut.resume(sessionId: session.id)
+        }
+        clock.advance(by: 15)
+
+        // When
+        let result = try await sut.end(sessionId: session.id, workNote: "회고")
+
+        // Then: pause 22초 제외한 순수 running 시간만 누적
+        XCTAssertEqual(result.accumulatedElapsed, 105)
+        XCTAssertEqual(result.status, .completed)
+        XCTAssertEqual(result.workNote, "회고")
+        XCTAssertEqual(result.pauseSegments.count, 3)
+        XCTAssertTrue(result.pauseSegments.allSatisfy { $0.resumedAt != nil })
+    }
+
+    func test_end_shouldNotAccumulateExtra_whenEndedWhilePaused() async throws {
+        // Given: run 90 → pause → 50초 방치 후 paused 상태에서 end
+        let (sut, _, clock) = makeSUT()
+        let session = try await sut.start(duration: 1500, goal: nil)
+        clock.advance(by: 90)
+        _ = try await sut.pause(sessionId: session.id)
+        clock.advance(by: 50)
+
+        // When
+        let result = try await sut.end(sessionId: session.id, workNote: "메모")
+
+        // Then: pause 시간은 누적되지 않고, completedAt은 실제 종료 시각
+        XCTAssertEqual(result.accumulatedElapsed, 90)
+        XCTAssertEqual(result.status, .completed)
+        XCTAssertEqual(result.completedAt, session.startedAt.addingTimeInterval(140))
+    }
+
+    func test_end_shouldThrowNoActiveSession_whenNoSession() async {
+        // Given
+        let (sut, _, _) = makeSUT()
+
+        // When / Then
+        await assertThrowsFocusSessionError(.noActiveSession) {
+            _ = try await sut.end(sessionId: UUID(), workNote: nil)
+        }
+    }
+
+    func test_end_shouldThrowSessionMismatch_whenSessionIdDoesNotMatch() async throws {
+        // Given
+        let (sut, _, _) = makeSUT()
+        _ = try await sut.start(duration: 1500, goal: nil)
+
+        // When / Then
+        await assertThrowsFocusSessionError(.sessionMismatch) {
+            _ = try await sut.end(sessionId: UUID(), workNote: nil)
+        }
+    }
+
     // MARK: - cancel
 
     func test_cancel_shouldMarkSessionCancelled_whenActiveSessionExists() async throws {
