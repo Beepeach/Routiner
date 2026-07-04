@@ -7,8 +7,6 @@ import Foundation
 ///   - `pause(sessionId:)`: 활성 세션 일시정지 — 마지막 running 구간을 accumulatedElapsed에 누적하고 열린 PauseSegment 추가
 ///   - `resume(sessionId:)`: 일시정지된 세션 재개 — 마지막 PauseSegment를 닫음
 ///   - `end(sessionId:workNote:)`: 세션 종료 — accumulatedElapsed 60초 미만이면 .cancelled(기록 제외), 이상이면 .completed
-///   - `complete(sessionId:)`: 진행 중인 세션 완료 처리 (status = .completed, completedAt = now)
-///   - `cancel(sessionId:)`: 진행 중인 세션 취소 처리 (status = .cancelled, completedAt = now)
 /// - Throws:
 ///   - `FocusSessionError.noActiveSession`: 활성 세션이 존재하지 않을 때
 ///   - `FocusSessionError.sessionMismatch`: 활성 세션 id와 요청 sessionId가 다를 때
@@ -19,8 +17,6 @@ protocol FocusSessionUseCase: Sendable {
     func pause(sessionId: UUID) async throws -> FocusSession
     func resume(sessionId: UUID) async throws -> FocusSession
     func end(sessionId: UUID, workNote: String?) async throws -> FocusSession
-    func complete(sessionId: UUID) async throws -> FocusSession
-    func cancel(sessionId: UUID) async throws -> FocusSession
 }
 
 final class DefaultFocusSessionUseCase: FocusSessionUseCase {
@@ -95,14 +91,6 @@ final class DefaultFocusSessionUseCase: FocusSessionUseCase {
         return session
     }
 
-    func complete(sessionId: UUID) async throws -> FocusSession {
-        try await transition(sessionId: sessionId, to: .completed, markCompletedAt: true)
-    }
-
-    func cancel(sessionId: UUID) async throws -> FocusSession {
-        try await transition(sessionId: sessionId, to: .cancelled, markCompletedAt: true)
-    }
-
     /// 활성 세션을 조회하고 sessionId 일치를 검증한다.
     private func activeSession(matching sessionId: UUID) async throws -> FocusSession {
         guard let session = try await repository.fetchActive() else {
@@ -111,22 +99,6 @@ final class DefaultFocusSessionUseCase: FocusSessionUseCase {
         guard session.id == sessionId else {
             throw FocusSessionError.sessionMismatch
         }
-        return session
-    }
-
-    /// 활성 세션의 상태를 다른 상태로 전이시킨다.
-    /// `markCompletedAt`: complete/cancel 처럼 종료 시점 기록이 필요할 때 true.
-    private func transition(
-        sessionId: UUID,
-        to status: FocusSessionStatus,
-        markCompletedAt: Bool
-    ) async throws -> FocusSession {
-        var session = try await activeSession(matching: sessionId)
-        session.status = status
-        if markCompletedAt {
-            session.completedAt = now()
-        }
-        try await repository.update(session)
         return session
     }
 }

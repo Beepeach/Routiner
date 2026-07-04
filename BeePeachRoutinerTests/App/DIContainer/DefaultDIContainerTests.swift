@@ -28,23 +28,23 @@ final class DefaultDIContainerTests: XCTestCase {
 
     // MARK: - Full flow
 
-    func test_makeFocusSessionUseCase_shouldExecuteStartAndCompleteFlow_whenInvokedFromContainer() async throws {
+    func test_makeFocusSessionUseCase_shouldExecuteStartAndEndFlow_whenInvokedFromContainer() async throws {
         // Given
         let sut = DefaultDIContainer()
         let useCase = sut.makeFocusSessionUseCase()
-        let goal = FocusSessionGoal(title: "DI Flow Test")
 
-        // When
-        let started = try await useCase.start(duration: 1500, goal: goal)
-        let completed = try await useCase.complete(sessionId: started.id)
+        // When: 실제 시계 기준 즉시 종료 → 60초 미만이므로 cancelled 로 기록 제외
+        let started = try await useCase.start(duration: 1500, goal: nil)
+        let ended = try await useCase.end(sessionId: started.id, workNote: "버려질 메모")
 
         // Then
         XCTAssertEqual(started.status, .active)
-        XCTAssertEqual(completed.status, .completed)
-        XCTAssertEqual(completed.id, started.id)
-        XCTAssertNotNil(completed.completedAt)
+        XCTAssertEqual(ended.status, .cancelled)
+        XCTAssertEqual(ended.id, started.id)
+        XCTAssertNil(ended.workNote)
+        XCTAssertNotNil(ended.completedAt)
 
         let active = try await sut.focusSessionRepository.fetchActive()
-        XCTAssertNil(active, "complete 후에는 활성 세션이 없어야 합니다")
+        XCTAssertNil(active, "end 후에는 활성 세션이 없어야 합니다")
     }
 }

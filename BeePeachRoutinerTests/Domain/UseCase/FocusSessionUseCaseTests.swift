@@ -38,49 +38,6 @@ final class FocusSessionUseCaseTests: XCTestCase {
         }
     }
 
-    // MARK: - complete
-
-    func test_complete_shouldMarkSessionCompleted_whenActiveSessionExists() async throws {
-        // Given
-        let stub = FocusSessionRepositoryStub()
-        let initial = makeActiveSession()
-        stub.activeSession = initial
-        let sut = DefaultFocusSessionUseCase(repository: stub)
-
-        // When
-        let result = try await sut.complete(sessionId: initial.id)
-
-        // Then
-        XCTAssertEqual(result.status, .completed)
-        XCTAssertNotNil(result.completedAt)
-        XCTAssertEqual(stub.activeSession?.status, .completed)
-        XCTAssertNotNil(stub.activeSession?.completedAt)
-    }
-
-    func test_complete_shouldThrowNoActiveSession_whenNoActiveSession() async {
-        // Given
-        let stub = FocusSessionRepositoryStub()
-        stub.activeSession = nil
-        let sut = DefaultFocusSessionUseCase(repository: stub)
-
-        // When / Then
-        await assertThrowsFocusSessionError(.noActiveSession) {
-            _ = try await sut.complete(sessionId: UUID())
-        }
-    }
-
-    func test_complete_shouldThrowSessionMismatch_whenSessionIdDoesNotMatch() async {
-        // Given
-        let stub = FocusSessionRepositoryStub()
-        stub.activeSession = makeActiveSession()
-        let sut = DefaultFocusSessionUseCase(repository: stub)
-
-        // When / Then
-        await assertThrowsFocusSessionError(.sessionMismatch) {
-            _ = try await sut.complete(sessionId: UUID())
-        }
-    }
-
     // MARK: - pause / resume
 
     func test_pause_shouldAccumulateElapsedAndAppendOpenSegment_whenActive() async throws {
@@ -269,49 +226,6 @@ final class FocusSessionUseCaseTests: XCTestCase {
         }
     }
 
-    // MARK: - cancel
-
-    func test_cancel_shouldMarkSessionCancelled_whenActiveSessionExists() async throws {
-        // Given
-        let stub = FocusSessionRepositoryStub()
-        let initial = makeActiveSession()
-        stub.activeSession = initial
-        let sut = DefaultFocusSessionUseCase(repository: stub)
-
-        // When
-        let result = try await sut.cancel(sessionId: initial.id)
-
-        // Then
-        XCTAssertEqual(result.status, .cancelled)
-        XCTAssertNotNil(result.completedAt)
-        XCTAssertEqual(stub.activeSession?.status, .cancelled)
-        XCTAssertNotNil(stub.activeSession?.completedAt)
-    }
-
-    func test_cancel_shouldThrowNoActiveSession_whenNoActiveSession() async {
-        // Given
-        let stub = FocusSessionRepositoryStub()
-        stub.activeSession = nil
-        let sut = DefaultFocusSessionUseCase(repository: stub)
-
-        // When / Then
-        await assertThrowsFocusSessionError(.noActiveSession) {
-            _ = try await sut.cancel(sessionId: UUID())
-        }
-    }
-
-    func test_cancel_shouldThrowSessionMismatch_whenSessionIdDoesNotMatch() async {
-        // Given
-        let stub = FocusSessionRepositoryStub()
-        stub.activeSession = makeActiveSession()
-        let sut = DefaultFocusSessionUseCase(repository: stub)
-
-        // When / Then
-        await assertThrowsFocusSessionError(.sessionMismatch) {
-            _ = try await sut.cancel(sessionId: UUID())
-        }
-    }
-
     // MARK: - Helpers
 
     private func makeSUT() -> (
@@ -323,17 +237,6 @@ final class FocusSessionUseCaseTests: XCTestCase {
         let stub = FocusSessionRepositoryStub()
         let sut = DefaultFocusSessionUseCase(repository: stub, now: { clock.now })
         return (sut, stub, clock)
-    }
-
-    private func makeActiveSession() -> FocusSession {
-        FocusSession(
-            id: UUID(),
-            startedAt: Date(),
-            duration: 1500,
-            goal: nil,
-            status: .active,
-            completedAt: nil
-        )
     }
 
     private func assertThrowsFocusSessionError(

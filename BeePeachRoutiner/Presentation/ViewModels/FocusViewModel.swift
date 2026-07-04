@@ -14,8 +14,10 @@ import RxCocoa
 /// 3. **running**: 1초 간격 timer로 elapsed 증가. 링/휠/라벨 모두 남은 시간을
 ///    라이브로 비춘다 — 모드(dial/digital)는 표시 방식일 뿐이라 전환은 항상 허용,
 ///    다이얼·휠 *입력*만 잠근다.
-/// 4. **cancel**: `FocusSessionUseCase.cancel` 호출. 성공 시 idle 로 복귀하되
-///    `selectedDuration` 은 유지(사용자 의도 보존).
+/// 4. **cancel**: `FocusSessionUseCase.end(workNote: nil)` 호출 — 도메인이 누적
+///    시간 기준으로 completed/cancelled 를 판정한다. 성공 시 idle 로 복귀하되
+///    `selectedDuration` 은 유지(사용자 의도 보존). 작업기록(workNote) 입력
+///    모달은 후속 태스크에서 연결한다.
 final class FocusViewModel {
 
     // MARK: - Input / Output
@@ -392,7 +394,7 @@ final class FocusViewModel {
             .withLatestFrom(activeSessionRelay)
             .compactMap { $0 }
             .flatMapLatest { session -> Observable<Event<FocusSession>> in
-                Self.singleFromAsync { try await useCase.cancel(sessionId: session.id) }
+                Self.singleFromAsync { try await useCase.end(sessionId: session.id, workNote: nil) }
                     .materialize()
             }
             .subscribe(onNext: { event in

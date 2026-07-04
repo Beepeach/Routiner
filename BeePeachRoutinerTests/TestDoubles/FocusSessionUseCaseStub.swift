@@ -3,9 +3,9 @@ import Foundation
 
 /// `FocusSessionUseCase` 테스트용 Stub.
 ///
-/// - 행동 검증: `startCallCount`, `cancelCallCount`, `completeCallCount`,
-///   `lastCancelledSessionId` 등으로 호출 사실을 추적한다.
-/// - 에러 주입: `startError`, `cancelError`, `completeError` 에 값을 세팅하면
+/// - 행동 검증: `startCallCount`, `endCallCount`, `lastEndedSessionId` 등으로
+///   호출 사실을 추적한다.
+/// - 에러 주입: `startError`, `endError` 등에 값을 세팅하면
 ///   해당 메서드가 그 에러를 던진다.
 ///
 /// `@unchecked Sendable`: 단일 thread에서만 사용한다는 가정 하에 mutable 프로퍼티의
@@ -15,8 +15,6 @@ final class FocusSessionUseCaseStub: FocusSessionUseCase, @unchecked Sendable {
     // MARK: - Error Injection
 
     var startError: Error?
-    var cancelError: Error?
-    var completeError: Error?
     var endError: Error?
 
     // MARK: - Error Injection (pause/resume)
@@ -29,13 +27,9 @@ final class FocusSessionUseCaseStub: FocusSessionUseCase, @unchecked Sendable {
     private(set) var startCallCount = 0
     private(set) var pauseCallCount = 0
     private(set) var resumeCallCount = 0
-    private(set) var cancelCallCount = 0
-    private(set) var completeCallCount = 0
+    private(set) var endCallCount = 0
     private(set) var lastPausedSessionId: UUID?
     private(set) var lastResumedSessionId: UUID?
-    private(set) var endCallCount = 0
-    private(set) var lastCancelledSessionId: UUID?
-    private(set) var lastCompletedSessionId: UUID?
     private(set) var lastEndedSessionId: UUID?
     private(set) var lastEndedWorkNote: String?
     private(set) var lastStartedDuration: TimeInterval?
@@ -78,20 +72,6 @@ final class FocusSessionUseCaseStub: FocusSessionUseCase, @unchecked Sendable {
         lastEndedWorkNote = workNote
         if let error = endError { throw error }
         return ended(sessionId: sessionId, status: .completed)
-    }
-
-    func complete(sessionId: UUID) async throws -> FocusSession {
-        completeCallCount += 1
-        lastCompletedSessionId = sessionId
-        if let error = completeError { throw error }
-        return ended(sessionId: sessionId, status: .completed)
-    }
-
-    func cancel(sessionId: UUID) async throws -> FocusSession {
-        cancelCallCount += 1
-        lastCancelledSessionId = sessionId
-        if let error = cancelError { throw error }
-        return ended(sessionId: sessionId, status: .cancelled)
     }
 
     // MARK: - Helpers

@@ -256,8 +256,9 @@ final class FocusViewModelTests: XCTestCase {
 
         // Then
         wait(for: [cancelledExp], timeout: 1.0)
-        XCTAssertEqual(useCase.cancelCallCount, 1)
-        XCTAssertNotNil(useCase.lastCancelledSessionId)
+        XCTAssertEqual(useCase.endCallCount, 1)
+        XCTAssertNotNil(useCase.lastEndedSessionId)
+        XCTAssertNil(useCase.lastEndedWorkNote, "취소 버튼 종료는 workNote 없이 end 를 호출해야 합니다")
     }
 
     func test_cancel_shouldBeIgnored_whenNoActiveSession() {
@@ -274,7 +275,7 @@ final class FocusViewModelTests: XCTestCase {
         wait(for: [settle], timeout: 1.0)
 
         // Then
-        XCTAssertEqual(useCase.cancelCallCount, 0)
+        XCTAssertEqual(useCase.endCallCount, 0)
     }
 
     // MARK: - isDialEnabled
