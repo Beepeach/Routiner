@@ -27,5 +27,8 @@ final class FocusSessionTests: XCTestCase {
         XCTAssertEqual(session.goal?.title, goal.title)
         XCTAssertEqual(session.status, status)
         XCTAssertNil(session.completedAt)
+        XCTAssertEqual(session.accumulatedElapsed, 0)
+        XCTAssertNil(session.workNote)
+        XCTAssertEqual(session.pauseSegments, [])
     }
 }
