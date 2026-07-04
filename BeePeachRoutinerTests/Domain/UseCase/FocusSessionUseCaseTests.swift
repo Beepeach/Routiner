@@ -83,47 +83,79 @@ final class FocusSessionUseCaseTests: XCTestCase {
 
     // MARK: - pause / resume
 
-    func test_pause_shouldTransitionToPaused_whenActiveSessionExists() async throws {
+    func test_pause_shouldAccumulateElapsedAndAppendOpenSegment_whenActive() async throws {
         // Given
-        let stub = FocusSessionRepositoryStub()
-        let active = makeActiveSession()
-        stub.activeSession = active
-        let sut = DefaultFocusSessionUseCase(repository: stub)
+        let (sut, stub, clock) = makeSUT()
+        let session = try await sut.start(duration: 1500, goal: nil)
+        clock.advance(by: 120)
 
         // When
-        let result = try await sut.pause(sessionId: active.id)
+        let result = try await sut.pause(sessionId: session.id)
 
-        // Then: status 만 바뀌고 completedAt 은 그대로 (nil)
+        // Then
         XCTAssertEqual(result.status, .paused)
+        XCTAssertEqual(result.accumulatedElapsed, 120)
+        XCTAssertEqual(result.pauseSegments, [
+            .init(pausedAt: session.startedAt.addingTimeInterval(120), resumedAt: nil)
+        ])
         XCTAssertNil(result.completedAt)
         XCTAssertEqual(stub.activeSession?.status, .paused)
     }
 
-    func test_resume_shouldTransitionToActive_whenPausedSessionExists() async throws {
-        // Given: paused 상태
-        let stub = FocusSessionRepositoryStub()
-        var paused = makeActiveSession()
-        paused.status = .paused
-        stub.activeSession = paused
-        let sut = DefaultFocusSessionUseCase(repository: stub)
+    func test_pause_shouldThrowInvalidStatus_whenAlreadyPaused() async throws {
+        // Given: 이미 paused — 재-pause 시 segment 중복·누적 이중 계산 방지
+        let (sut, _, clock) = makeSUT()
+        let session = try await sut.start(duration: 1500, goal: nil)
+        clock.advance(by: 30)
+        _ = try await sut.pause(sessionId: session.id)
 
-        // When
-        let result = try await sut.resume(sessionId: paused.id)
-
-        // Then
-        XCTAssertEqual(result.status, .active)
-        XCTAssertNil(result.completedAt)
-        XCTAssertEqual(stub.activeSession?.status, .active)
+        // When / Then
+        await assertThrowsFocusSessionError(.invalidStatus) {
+            _ = try await sut.pause(sessionId: session.id)
+        }
     }
 
     func test_pause_shouldThrowNoActiveSession_whenNoSession() async {
         // Given
-        let stub = FocusSessionRepositoryStub()
-        let sut = DefaultFocusSessionUseCase(repository: stub)
+        let (sut, _, _) = makeSUT()
 
         // When / Then
         await assertThrowsFocusSessionError(.noActiveSession) {
             _ = try await sut.pause(sessionId: UUID())
+        }
+    }
+
+    func test_resume_shouldCloseLastSegment_whenPaused() async throws {
+        // Given
+        let (sut, stub, clock) = makeSUT()
+        let session = try await sut.start(duration: 1500, goal: nil)
+        clock.advance(by: 120)
+        _ = try await sut.pause(sessionId: session.id)
+        clock.advance(by: 30)
+
+        // When
+        let result = try await sut.resume(sessionId: session.id)
+
+        // Then: segment가 닫히고 pause 시간은 누적에 포함되지 않음
+        XCTAssertEqual(result.status, .active)
+        XCTAssertEqual(result.accumulatedElapsed, 120)
+        XCTAssertEqual(result.pauseSegments, [
+            .init(
+                pausedAt: session.startedAt.addingTimeInterval(120),
+                resumedAt: session.startedAt.addingTimeInterval(150)
+            )
+        ])
+        XCTAssertEqual(stub.activeSession?.status, .active)
+    }
+
+    func test_resume_shouldThrowInvalidStatus_whenActive() async throws {
+        // Given: pause 없이 바로 resume
+        let (sut, _, _) = makeSUT()
+        let session = try await sut.start(duration: 1500, goal: nil)
+
+        // When / Then
+        await assertThrowsFocusSessionError(.invalidStatus) {
+            _ = try await sut.resume(sessionId: session.id)
         }
     }
 
@@ -172,6 +204,17 @@ final class FocusSessionUseCaseTests: XCTestCase {
 
     // MARK: - Helpers
 
+    private func makeSUT() -> (
+        sut: DefaultFocusSessionUseCase,
+        stub: FocusSessionRepositoryStub,
+        clock: FakeClock
+    ) {
+        let clock = FakeClock()
+        let stub = FocusSessionRepositoryStub()
+        let sut = DefaultFocusSessionUseCase(repository: stub, now: { clock.now })
+        return (sut, stub, clock)
+    }
+
     private func makeActiveSession() -> FocusSession {
         FocusSession(
             id: UUID(),
@@ -197,5 +240,18 @@ final class FocusSessionUseCaseTests: XCTestCase {
         } catch {
             XCTFail("예상치 못한 에러: \(error)", file: file, line: line)
         }
+    }
+}
+
+/// 테스트에서 시각을 결정론적으로 전진시키기 위한 가짜 시계
+private final class FakeClock: @unchecked Sendable {
+    private(set) var now: Date
+
+    init(start: Date = Date(timeIntervalSince1970: 1_000_000)) {
+        self.now = start
+    }
+
+    func advance(by seconds: TimeInterval) {
+        now.addTimeInterval(seconds)
     }
 }
