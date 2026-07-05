@@ -1,16 +1,16 @@
 import UIKit
 
-// MARK: - FocusCoordinator
+// MARK: - TimerCoordinator
 
-/// Focus 화면 흐름을 담당하는 Coordinator.
+/// Timer 탭의 화면 흐름을 담당하는 Coordinator.
 ///
-/// 현재는 `FocusViewController` 하나만 push 하지만, 추후 디지털 휠 모드/세션 결과 화면 등
-/// Focus 도메인의 추가 화면이 생기면 이 Coordinator가 라우팅을 담당한다.
-final class FocusCoordinator: Coordinator {
+/// 현재는 `FocusViewController` 하나만 push 하지만, 추후 집중 대상 선택/세션 결과 화면 등
+/// Timer 탭의 추가 화면이 생기면 이 Coordinator가 라우팅을 담당한다.
+final class TimerCoordinator: Coordinator {
 
     // MARK: - Properties
 
-    let navigationController: UINavigationController
+    private let navigationController: UINavigationController
     var childCoordinators: [Coordinator] = []
 
     private let diContainer: DIContainer

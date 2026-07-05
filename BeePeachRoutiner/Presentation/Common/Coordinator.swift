@@ -1,14 +1,11 @@
-import UIKit
-
 // MARK: - Coordinator
 
 /// 화면 전환 조정자의 공통 계약.
 ///
-/// 모든 Coordinator는 자신이 소유하는 `navigationController`를 가지며,
+/// 각 Coordinator는 자신이 담당하는 컨테이너(내비게이션 스택, 탭바 등)를 스스로 소유하고,
 /// 자식 Coordinator들의 라이프사이클을 `childCoordinators`로 추적한다.
 /// 이를 통해 Coordinator 트리가 ARC 순환 없이 유지된다.
 protocol Coordinator: AnyObject {
-    var navigationController: UINavigationController { get }
     var childCoordinators: [Coordinator] { get set }
 
     func start()
