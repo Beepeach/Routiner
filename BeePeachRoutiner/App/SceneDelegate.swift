@@ -18,11 +18,11 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     ) {
         guard let windowScene = scene as? UIWindowScene else { return }
 
-        // 앱 조립 루트: DIContainer → NavigationController → AppCoordinator
+        // 앱 조립 루트: DIContainer → TabBarController → AppCoordinator
         let diContainer = DefaultDIContainer()
-        let navigationController = UINavigationController()
+        let tabBarController = UITabBarController()
         let appCoordinator = AppCoordinator(
-            navigationController: navigationController,
+            tabBarController: tabBarController,
             diContainer: diContainer
         )
 
@@ -30,7 +30,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         self.appCoordinator = appCoordinator
 
         let window = UIWindow(windowScene: windowScene)
-        window.rootViewController = navigationController
+        window.rootViewController = tabBarController
         window.makeKeyAndVisible()
         self.window = window
 
