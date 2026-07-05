@@ -9,7 +9,7 @@ final class AppCoordinator: Coordinator {
 
     // MARK: - Properties
 
-    let navigationController: UINavigationController
+    private let navigationController: UINavigationController
     var childCoordinators: [Coordinator] = []
 
     private let diContainer: DIContainer
