@@ -3,10 +3,11 @@ import RxSwift
 import RxCocoa
 @testable import BeePeachRoutiner
 
+@MainActor
 final class FocusViewModelTests: XCTestCase {
 
     // setUp/tearDown 대신 인라인 초기화를 사용한다.
-    // Swift 6 MainActor 기본 격리에서 setUp/tearDown은 XCTestCase(비격리)의
+    // @MainActor 클래스에서 setUp/tearDown은 XCTestCase(비격리)의 override라
     // nonisolated를 상속해 @MainActor 프로퍼티에 접근할 수 없고,
     // XCTest가 테스트 메서드마다 새 인스턴스를 만들므로 격리 수준은 동일하다.
     private var disposeBag = DisposeBag()
