@@ -409,6 +409,10 @@ final class FocusViewModel {
     // MARK: - Helpers
 
     /// async 호출을 Rx Single → Observable 로 감싼다. dispose 시 Task가 취소되도록 묶는다.
+    ///
+    /// MainActor 기본 격리에서 Task와 work는 main executor에서 실행된다 (SE-0461).
+    /// 도메인 로직이 in-memory 저장소의 µs 단위 작업뿐이라 의도적으로 수용한 것으로,
+    /// 실제 IO 저장소 도입 시 이 경로에만 @concurrent를 검토한다.
     private static func singleFromAsync<T>(
         _ work: @escaping @Sendable () async throws -> T
     ) -> Observable<T> {
