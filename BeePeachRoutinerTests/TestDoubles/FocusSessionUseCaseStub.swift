@@ -10,7 +10,7 @@ import Foundation
 ///
 /// `@unchecked Sendable`: 단일 thread에서만 사용한다는 가정 하에 mutable 프로퍼티의
 /// race 위험을 우리가 책임진다.
-final class FocusSessionUseCaseStub: FocusSessionUseCase, @unchecked Sendable {
+nonisolated final class FocusSessionUseCaseStub: FocusSessionUseCase, @unchecked Sendable {
 
     // MARK: - Error Injection
 

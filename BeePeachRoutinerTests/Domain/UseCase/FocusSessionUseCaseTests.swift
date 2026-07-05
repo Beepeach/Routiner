@@ -258,7 +258,7 @@ final class FocusSessionUseCaseTests: XCTestCase {
 }
 
 /// 테스트에서 시각을 결정론적으로 전진시키기 위한 가짜 시계
-private final class FakeClock: @unchecked Sendable {
+private nonisolated final class FakeClock: @unchecked Sendable {
     private(set) var now: Date
 
     init(start: Date = Date(timeIntervalSince1970: 1_000_000)) {
