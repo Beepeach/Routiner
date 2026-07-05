@@ -1,6 +1,6 @@
 import Foundation
 
-enum FocusSessionStatus: Sendable, Equatable {
+nonisolated enum FocusSessionStatus: Sendable, Equatable {
     case active
     case paused
     case completed

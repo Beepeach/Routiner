@@ -12,14 +12,14 @@ import Foundation
 ///   - `FocusSessionError.sessionMismatch`: 활성 세션 id와 요청 sessionId가 다를 때
 ///   - `FocusSessionError.invalidStatus`: pause는 active, resume은 paused 상태에서만 허용
 ///   - Repository 접근 실패 시 Error
-protocol FocusSessionUseCase: Sendable {
+nonisolated protocol FocusSessionUseCase: Sendable {
     func start(duration: TimeInterval) async throws -> FocusSession
     func pause(sessionId: UUID) async throws -> FocusSession
     func resume(sessionId: UUID) async throws -> FocusSession
     func end(sessionId: UUID, workNote: String?) async throws -> FocusSession
 }
 
-final class DefaultFocusSessionUseCase: FocusSessionUseCase {
+nonisolated final class DefaultFocusSessionUseCase: FocusSessionUseCase {
     /// 이 시간 미만의 세션은 종료 시 기록에서 제외(.cancelled)된다.
     private static let minimumCompletedElapsed: TimeInterval = 60
 
@@ -102,7 +102,7 @@ final class DefaultFocusSessionUseCase: FocusSessionUseCase {
     }
 }
 
-private extension FocusSession {
+private nonisolated extension FocusSession {
     /// 마지막 running 구간의 시작 시각. pause 이력이 없으면 startedAt.
     var lastRunStartedAt: Date { pauseSegments.last?.resumedAt ?? startedAt }
 }

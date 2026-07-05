@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - DefaultFocusSessionRepository
 
-final class DefaultFocusSessionRepository: FocusSessionRepository {
+nonisolated final class DefaultFocusSessionRepository: FocusSessionRepository {
 
     // MARK: - Dependencies
 

@@ -1,8 +1,8 @@
 import Foundation
 
-struct FocusSession: Sendable {
+nonisolated struct FocusSession: Sendable {
     /// pause/resume 한 구간의 이력. resumedAt이 nil이면 아직 일시정지 중.
-    struct PauseSegment: Equatable, Sendable {
+    nonisolated struct PauseSegment: Equatable, Sendable {
         let pausedAt: Date
         var resumedAt: Date?
     }
