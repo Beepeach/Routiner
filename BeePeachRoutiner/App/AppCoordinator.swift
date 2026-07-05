@@ -4,7 +4,7 @@ import UIKit
 
 /// 앱 진입점 Coordinator. `SceneDelegate`가 window에 연결한다.
 ///
-/// 자식 `FocusCoordinator`에 Focus 도메인 화면 흐름을 위임한다.
+/// 자식 `TimerCoordinator`에 Timer 탭 화면 흐름을 위임한다.
 final class AppCoordinator: Coordinator {
 
     // MARK: - Properties
@@ -27,11 +27,11 @@ final class AppCoordinator: Coordinator {
     // MARK: - Coordinator
 
     func start() {
-        let focusCoordinator = FocusCoordinator(
+        let timerCoordinator = TimerCoordinator(
             navigationController: navigationController,
             diContainer: diContainer
         )
-        addChild(focusCoordinator)
-        focusCoordinator.start()
+        addChild(timerCoordinator)
+        timerCoordinator.start()
     }
 }
