@@ -61,7 +61,6 @@ final class DefaultFocusSessionRepositoryTests: XCTestCase {
             id: UUID(),
             startedAt: Date(),
             duration: 1500,
-            goal: nil,
             status: status,
             completedAt: status == .active ? nil : Date()
         )

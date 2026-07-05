@@ -256,8 +256,9 @@ final class FocusViewModelTests: XCTestCase {
 
         // Then
         wait(for: [cancelledExp], timeout: 1.0)
-        XCTAssertEqual(useCase.cancelCallCount, 1)
-        XCTAssertNotNil(useCase.lastCancelledSessionId)
+        XCTAssertEqual(useCase.endCallCount, 1)
+        XCTAssertNotNil(useCase.lastEndedSessionId)
+        XCTAssertNil(useCase.lastEndedWorkNote, "취소 버튼 종료는 workNote 없이 end 를 호출해야 합니다")
     }
 
     func test_cancel_shouldBeIgnored_whenNoActiveSession() {
@@ -274,7 +275,7 @@ final class FocusViewModelTests: XCTestCase {
         wait(for: [settle], timeout: 1.0)
 
         // Then
-        XCTAssertEqual(useCase.cancelCallCount, 0)
+        XCTAssertEqual(useCase.endCallCount, 0)
     }
 
     // MARK: - isDialEnabled
@@ -579,7 +580,7 @@ final class FocusViewModelTests: XCTestCase {
         XCTAssertEqual(captured.last, .digital)
     }
 
-    // MARK: - goal
+    // MARK: - start (wheel)
 
     func test_start_shouldUseWheelDuration_whenSetViaWheel() {
         // Given
@@ -595,43 +596,6 @@ final class FocusViewModelTests: XCTestCase {
         // Then
         wait(for: [runningExp], timeout: 1.0)
         XCTAssertEqual(useCase.lastStartedDuration, 900)
-    }
-
-    func test_start_shouldPassTrimmedGoal_whenGoalHasWhitespace() {
-        // Given
-        let useCase = FocusSessionUseCaseStub()
-        let sut = FocusViewModel(useCase: useCase, maxDuration: 60 * 60)
-        let runtime = bind(sut)
-        let runningExp = expectIsRunningBecomesTrue(runtime.output)
-
-        runtime.goalSubject.onNext("  Deep Work  ")
-        runtime.dialSubject.onNext(0.5)
-
-        // When
-        runtime.startSubject.onNext(())
-
-        // Then: 앞뒤 공백 제거된 goal 이 UseCase 로 전달
-        wait(for: [runningExp], timeout: 1.0)
-        XCTAssertEqual(useCase.lastStartedGoal?.title, "Deep Work")
-    }
-
-    func test_start_shouldPassNilGoal_whenGoalIsWhitespaceOnly() {
-        // Given: 공백만 있는 입력은 goal 없음으로 취급
-        let useCase = FocusSessionUseCaseStub()
-        let sut = FocusViewModel(useCase: useCase, maxDuration: 60 * 60)
-        let runtime = bind(sut)
-        let runningExp = expectIsRunningBecomesTrue(runtime.output)
-
-        runtime.goalSubject.onNext("   ")
-        runtime.dialSubject.onNext(0.5)
-
-        // When
-        runtime.startSubject.onNext(())
-
-        // Then
-        wait(for: [runningExp], timeout: 1.0)
-        XCTAssertEqual(useCase.startCallCount, 1)
-        XCTAssertNil(useCase.lastStartedGoal)
     }
 
     // MARK: - timeText
@@ -664,7 +628,6 @@ final class FocusViewModelTests: XCTestCase {
         let dialSubject: PublishSubject<CGFloat>
         let wheelSubject: PublishSubject<TimeInterval>
         let modeSubject: PublishSubject<FocusMode>
-        let goalSubject: PublishSubject<String?>
         let startSubject: PublishSubject<Void>
         let pauseSubject: PublishSubject<Void>
         let resumeSubject: PublishSubject<Void>
@@ -676,7 +639,6 @@ final class FocusViewModelTests: XCTestCase {
         let dialSubject = PublishSubject<CGFloat>()
         let wheelSubject = PublishSubject<TimeInterval>()
         let modeSubject = PublishSubject<FocusMode>()
-        let goalSubject = PublishSubject<String?>()
         let startSubject = PublishSubject<Void>()
         let pauseSubject = PublishSubject<Void>()
         let resumeSubject = PublishSubject<Void>()
@@ -685,7 +647,6 @@ final class FocusViewModelTests: XCTestCase {
             dialRatioChanged: dialSubject.asObservable(),
             wheelDurationChanged: wheelSubject.asObservable(),
             modeChanged: modeSubject.asObservable(),
-            goalChanged: goalSubject.asObservable(),
             startTapped: startSubject.asObservable(),
             pauseTapped: pauseSubject.asObservable(),
             resumeTapped: resumeSubject.asObservable(),
@@ -695,7 +656,6 @@ final class FocusViewModelTests: XCTestCase {
             dialSubject: dialSubject,
             wheelSubject: wheelSubject,
             modeSubject: modeSubject,
-            goalSubject: goalSubject,
             startSubject: startSubject,
             pauseSubject: pauseSubject,
             resumeSubject: resumeSubject,
