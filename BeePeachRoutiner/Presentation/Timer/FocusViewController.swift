@@ -34,8 +34,9 @@ final class FocusViewController: UIViewController {
     private let pauseSubject = PublishSubject<Void>()
     private let resumeSubject = PublishSubject<Void>()
 
-    /// 캡슐 stop tap 을 ViewModel 로 전달하는 통로.
-    private let stopSubject = PublishSubject<Void>()
+    /// 작업기록 모달이 확정한 종료 결과(저장: 텍스트, 닫기/스와이프: nil)를
+    /// ViewModel 로 전달하는 통로.
+    private let endConfirmedSubject = PublishSubject<String?>()
 
     // MARK: - State Snapshot
 
@@ -147,7 +148,7 @@ final class FocusViewController: UIViewController {
             }
         }
         controlCapsule.onStopTapped = { [weak self] in
-            self?.stopSubject.onNext(())
+            self?.beginEndFlow()
         }
 
         let input = FocusViewModel.Input(
@@ -158,7 +159,7 @@ final class FocusViewController: UIViewController {
             startTapped: startSubject.asObservable(),
             pauseTapped: pauseSubject.asObservable(),
             resumeTapped: resumeSubject.asObservable(),
-            cancelTapped: stopSubject.asObservable()
+            endConfirmed: endConfirmedSubject.asObservable()
         )
         let output = viewModel.transform(input: input)
 
@@ -212,11 +213,37 @@ final class FocusViewController: UIViewController {
             })
             .disposed(by: disposeBag)
 
+        // 시간 소진도 stop tap 과 같은 종료 플로우를 태운다.
+        output.sessionExpired
+            .drive(onNext: { [weak self] in
+                self?.beginEndFlow()
+            })
+            .disposed(by: disposeBag)
+
         output.error
             .drive(onNext: { [weak self] error in
                 self?.presentError(error)
             })
             .disposed(by: disposeBag)
+    }
+
+    // MARK: - End Flow
+
+    /// stop tap 과 timer 만료가 공유하는 종료 플로우.
+    /// running 이면 먼저 pause 한다 — 도메인의 accumulatedElapsed 는 벽시계 기반이라
+    /// 모달이 떠 있는 동안에도 계속 누적되어, 60초 문턱 판정(기록 여부)이
+    /// 모달에 머문 시간에 좌우되는 것을 막기 위함이다.
+    private func beginEndFlow() {
+        // presentedViewController 가드: 만료 방출과 stop tap 이 겹칠 때 이중 present 방지.
+        guard currentState != .idle, presentedViewController == nil else { return }
+        if currentState == .running {
+            pauseSubject.onNext(())
+        }
+        let modal = WorkLogModalViewController()
+        modal.onComplete = { [weak self] workNote in
+            self?.endConfirmedSubject.onNext(workNote)
+        }
+        present(modal, animated: true)
     }
 
     private func applyState(_ state: SessionState) {
