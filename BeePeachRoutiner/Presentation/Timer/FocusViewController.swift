@@ -13,11 +13,9 @@ import SnapKit
 /// - 원형 다이얼: `CircularProgressRingView`. knob 을 PanGesture 로 돌려 시간 설정.
 /// - 휠 피커: `TimeWheelPickerView`. 분/초 정밀 입력 (Digital Mode).
 /// - 시간 라벨: idle 에서는 설정한 시간, 진행 중에는 남은 시간 ("MM:SS").
-/// - 컨트롤: 단일 `primaryButton` 이 상태에 따라 텍스트/액션이 바뀐다.
-///   - idle:   "Start"  → 세션 시작
-///   - running:"Pause"  → 일시정지
-///   - paused: "Resume" → 재개
-///   `cancelButton` 은 running/paused 상태에서만 노출되어 세션을 취소한다.
+/// - 컨트롤: `SessionControlCapsule` 하나로 통합. play/pause 버튼이 상태에 따라
+///   start/pause/resume 로 분기하고, stop 버튼이 세션을 종료한다.
+///   캡슐은 모드(Dial/Digital)와 무관하게 항상 노출된다 — 모드는 표시 방식일 뿐.
 final class FocusViewController: UIViewController {
 
     // MARK: - Dependencies
@@ -31,10 +29,13 @@ final class FocusViewController: UIViewController {
     /// 사용자가 휠 피커를 돌릴 때 duration 을 ViewModel 로 전달하는 통로.
     private let wheelDurationSubject = PublishSubject<TimeInterval>()
 
-    /// primaryButton tap 을 현재 상태(idle/running/paused)에 따라 분기하기 위한 통로들.
+    /// play/pause tap 을 현재 상태(idle/running/paused)에 따라 분기하기 위한 통로들.
     private let startSubject = PublishSubject<Void>()
     private let pauseSubject = PublishSubject<Void>()
     private let resumeSubject = PublishSubject<Void>()
+
+    /// 캡슐 stop tap 을 ViewModel 로 전달하는 통로.
+    private let stopSubject = PublishSubject<Void>()
 
     // MARK: - State Snapshot
 
@@ -68,21 +69,7 @@ final class FocusViewController: UIViewController {
         return label
     }()
 
-    private let primaryButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Start", for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 18, weight: .bold)
-        return button
-    }()
-
-    private let cancelButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Cancel", for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 18, weight: .bold)
-        button.tintColor = .systemRed
-        button.isHidden = true
-        return button
-    }()
+    private let controlCapsule = SessionControlCapsule()
 
     // MARK: - Initialization
 
@@ -114,8 +101,7 @@ final class FocusViewController: UIViewController {
         view.addSubview(ringView)
         ringView.addSubview(timeLabel)
         view.addSubview(wheelPickerView)
-        view.addSubview(cancelButton)
-        view.addSubview(primaryButton)
+        view.addSubview(controlCapsule)
 
         ringView.snp.makeConstraints { make in
             make.centerX.equalTo(view.safeAreaLayoutGuide)
@@ -131,18 +117,10 @@ final class FocusViewController: UIViewController {
             make.center.equalTo(ringView)
             make.width.equalTo(ringView)
         }
-        // 기본 위치: primaryButton 가운데, cancelButton 그 왼쪽.
-        primaryButton.snp.makeConstraints { make in
+        // 캡슐은 하단 고정 — 다이얼/휠(중앙 슬롯)과 겹치지 않는다.
+        controlCapsule.snp.makeConstraints { make in
             make.centerX.equalToSuperview()
-            make.top.equalTo(ringView.snp.bottom).offset(40)
-            make.height.equalTo(56)
-            make.width.equalTo(160)
-        }
-        cancelButton.snp.makeConstraints { make in
-            make.trailing.equalTo(primaryButton.snp.leading).offset(-16)
-            make.centerY.equalTo(primaryButton)
-            make.height.equalTo(primaryButton)
-            make.width.equalTo(120)
+            make.bottom.equalTo(view.safeAreaLayoutGuide).offset(-24)
         }
     }
 
@@ -159,17 +137,18 @@ final class FocusViewController: UIViewController {
     // MARK: - Binding
 
     private func bindViewModel() {
-        // primary 버튼 한 개를 현재 상태에 따라 start/pause/resume 로 분기.
-        primaryButton.rx.tap
-            .subscribe(onNext: { [weak self] in
-                guard let self else { return }
-                switch self.currentState {
-                case .idle:    self.startSubject.onNext(())
-                case .running: self.pauseSubject.onNext(())
-                case .paused:  self.resumeSubject.onNext(())
-                }
-            })
-            .disposed(by: disposeBag)
+        // play/pause 버튼 한 개를 현재 상태에 따라 start/pause/resume 로 분기.
+        controlCapsule.onPlayPauseTapped = { [weak self] in
+            guard let self else { return }
+            switch currentState {
+            case .idle:    startSubject.onNext(())
+            case .running: pauseSubject.onNext(())
+            case .paused:  resumeSubject.onNext(())
+            }
+        }
+        controlCapsule.onStopTapped = { [weak self] in
+            self?.stopSubject.onNext(())
+        }
 
         let input = FocusViewModel.Input(
             dialRatioChanged: dialRatioSubject.asObservable(),
@@ -179,7 +158,7 @@ final class FocusViewController: UIViewController {
             startTapped: startSubject.asObservable(),
             pauseTapped: pauseSubject.asObservable(),
             resumeTapped: resumeSubject.asObservable(),
-            cancelTapped: cancelButton.rx.tap.asObservable()
+            cancelTapped: stopSubject.asObservable()
         )
         let output = viewModel.transform(input: input)
 
@@ -215,7 +194,7 @@ final class FocusViewController: UIViewController {
             .drive(timeLabel.rx.text)
             .disposed(by: disposeBag)
 
-        // running/paused 조합으로 currentState 갱신 + 버튼 텍스트/노출 토글
+        // running/paused 조합으로 currentState 갱신 + 캡슐 상태 동기화
         Driver.combineLatest(output.isRunning, output.isPaused)
             .drive(onNext: { [weak self] running, paused in
                 guard let self else { return }
@@ -242,15 +221,9 @@ final class FocusViewController: UIViewController {
 
     private func applyState(_ state: SessionState) {
         switch state {
-        case .idle:
-            primaryButton.setTitle("Start", for: .normal)
-            cancelButton.isHidden = true
-        case .running:
-            primaryButton.setTitle("Pause", for: .normal)
-            cancelButton.isHidden = false
-        case .paused:
-            primaryButton.setTitle("Resume", for: .normal)
-            cancelButton.isHidden = false
+        case .idle:    controlCapsule.state = .idle
+        case .running: controlCapsule.state = .running
+        case .paused:  controlCapsule.state = .paused
         }
     }
 
