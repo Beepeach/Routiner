@@ -1,6 +1,7 @@
 import XCTest
 @testable import BeePeachRoutiner
 
+@MainActor
 final class ActivityCoordinatorTests: XCTestCase {
 
     // MARK: - start

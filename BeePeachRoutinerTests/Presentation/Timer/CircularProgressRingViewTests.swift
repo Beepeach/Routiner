@@ -1,6 +1,7 @@
 import XCTest
 @testable import BeePeachRoutiner
 
+@MainActor
 final class CircularProgressRingViewTests: XCTestCase {
 
     // MARK: - setRatio

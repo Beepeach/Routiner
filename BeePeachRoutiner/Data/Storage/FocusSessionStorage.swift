@@ -3,7 +3,7 @@ import Foundation
 // MARK: - FocusSessionStorage
 
 /// `FocusSession` 영속화 백엔드의 추상화.
-protocol FocusSessionStorage: Sendable {
+nonisolated protocol FocusSessionStorage: Sendable {
     func save(_ session: FocusSession) async throws
     func fetchActive() async throws -> FocusSession?
     func update(_ session: FocusSession) async throws
