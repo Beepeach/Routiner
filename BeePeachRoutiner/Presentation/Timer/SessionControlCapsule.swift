@@ -13,6 +13,21 @@ final class SessionControlCapsule: UIView {
 
     // MARK: - Public API
 
+    /// 캡슐이 표현하는 세션 상태. 아이콘/버튼 활성화만 결정하는 표시 전용 값.
+    enum State {
+        case idle
+        case running
+        case paused
+    }
+
+    /// 외부(VC)가 세션 상태를 주입한다. 변경 시 play/pause 아이콘이 morph 된다.
+    var state: State = .idle {
+        didSet {
+            guard state != oldValue else { return }
+            updateUI()
+        }
+    }
+
     /// play/pause 버튼 tap 시 호출된다. 분기(start/pause/resume)는 호출측 책임.
     var onPlayPauseTapped: (() -> Void)?
 
@@ -92,6 +107,24 @@ final class SessionControlCapsule: UIView {
 
         stopButton.addTarget(self, action: #selector(stopTapped), for: .touchUpInside)
         playPauseButton.addTarget(self, action: #selector(playPauseTapped), for: .touchUpInside)
+
+        updateUI()
+    }
+
+    // MARK: - State
+
+    private func updateUI() {
+        // running → ⏸, idle/paused → ▶. crossDissolve 로 아이콘을 부드럽게 morph.
+        let imageName = (state == .running) ? "pause.fill" : "play.fill"
+        UIView.transition(
+            with: playPauseButton,
+            duration: 0.3,
+            options: .transitionCrossDissolve
+        ) {
+            self.playPauseButton.setImage(UIImage(systemName: imageName), for: .normal)
+        }
+        // idle 에는 종료할 세션이 없으므로 stop 을 잠근다.
+        stopButton.isEnabled = (state != .idle)
     }
 
     // MARK: - Actions
