@@ -13,16 +13,19 @@ final class TimerCoordinator: Coordinator {
     private let navigationController: UINavigationController
     var childCoordinators: [Coordinator] = []
 
-    private let diContainer: DIContainer
+    /// 조립이 끝난 ViewModel 을 주입받는다 — 의존성 조립(Composition Root)은 App 책임이고,
+    /// Presentation 이 DIContainer 를 알면 레이어 역방향 의존이 생기기 때문.
+    /// Timer 화면은 1회 생성이라 factory 없이 인스턴스로 충분하다.
+    private let viewModel: FocusViewModel
 
     // MARK: - Initialization
 
     init(
         navigationController: UINavigationController,
-        diContainer: DIContainer
+        viewModel: FocusViewModel
     ) {
         self.navigationController = navigationController
-        self.diContainer = diContainer
+        self.viewModel = viewModel
     }
 
     // swiftlang/swift#87316 워크어라운드: MainActor 기본 격리가 합성하는 isolated deinit이
@@ -32,7 +35,6 @@ final class TimerCoordinator: Coordinator {
     // MARK: - Coordinator
 
     func start() {
-        let viewModel = diContainer.makeFocusViewModel()
         let viewController = FocusViewController(viewModel: viewModel)
         navigationController.setViewControllers([viewController], animated: false)
     }

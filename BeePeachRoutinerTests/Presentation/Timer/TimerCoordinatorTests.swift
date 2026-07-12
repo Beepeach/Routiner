@@ -11,7 +11,7 @@ final class TimerCoordinatorTests: XCTestCase {
         let navigationController = UINavigationController()
         let sut = TimerCoordinator(
             navigationController: navigationController,
-            diContainer: DefaultDIContainer()
+            viewModel: FocusViewModel(useCase: FocusSessionUseCaseStub())
         )
 
         // When

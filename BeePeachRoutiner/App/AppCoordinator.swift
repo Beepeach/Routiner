@@ -39,9 +39,10 @@ final class AppCoordinator: Coordinator {
             image: UIImage(systemName: "timer"),
             tag: 0
         )
+        // 의존성 조립은 Composition Root 인 여기서 — 자식 Coordinator 는 완성된 객체만 소비한다.
         let timerCoordinator = TimerCoordinator(
             navigationController: timerNavigationController,
-            diContainer: diContainer
+            viewModel: diContainer.makeFocusViewModel()
         )
         addChild(timerCoordinator)
         timerCoordinator.start()
