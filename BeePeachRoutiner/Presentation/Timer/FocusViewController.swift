@@ -40,10 +40,14 @@ final class FocusViewController: UIViewController {
 
     // MARK: - State Snapshot
 
-    /// primaryButton tap 분기에 쓰는 현재 상태 스냅샷.
-    /// Driver(`isRunning`, `isPaused`) 두 값을 별도 관리하는 대신 합쳐서 enum 으로 보관한다.
-    private enum SessionState { case idle, running, paused }
-    private var currentState: SessionState = .idle
+    /// play/pause tap 분기와 종료 플로우 가드에 쓰는 현재 상태 스냅샷.
+    /// Driver(`isRunning`, `isPaused`) 두 값을 별도 관리하는 대신 합쳐서 보관한다.
+    /// 캡슐과 case 가 1:1 이라 별도 enum 을 두지 않고 캡슐의 State 를 그대로 쓴다.
+    private var currentState: SessionControlCapsule.State = .idle
+
+    /// 만료/stop 시점에 모달을 띄울 수 없었던 경우(다른 탭, 알럿 위) 재시도 예약 플래그.
+    /// sessionExpired 는 세션당 1회만 방출되므로 이벤트를 버리면 종료 플로우가 유실된다.
+    private var isEndFlowPending = false
 
     // MARK: - UI
 
@@ -199,9 +203,10 @@ final class FocusViewController: UIViewController {
         Driver.combineLatest(output.isRunning, output.isPaused)
             .drive(onNext: { [weak self] running, paused in
                 guard let self else { return }
-                let state: SessionState = running ? .running : (paused ? .paused : .idle)
+                let state: SessionControlCapsule.State =
+                    running ? .running : (paused ? .paused : .idle)
                 self.currentState = state
-                self.applyState(state)
+                self.controlCapsule.state = state
             })
             .disposed(by: disposeBag)
 
@@ -230,15 +235,27 @@ final class FocusViewController: UIViewController {
     // MARK: - End Flow
 
     /// stop tap 과 timer 만료가 공유하는 종료 플로우.
-    /// running 이면 먼저 pause 한다 — 도메인의 accumulatedElapsed 는 벽시계 기반이라
-    /// 모달이 떠 있는 동안에도 계속 누적되어, 60초 문턱 판정(기록 여부)이
-    /// 모달에 머문 시간에 좌우되는 것을 막기 위함이다.
+    ///
+    /// - running 이면 먼저 pause 한다 — 도메인의 accumulatedElapsed 는 벽시계 기반이라
+    ///   모달이 떠 있는 동안에도 계속 누적되어, 60초 문턱 판정(기록 여부)이
+    ///   모달에 머문 시간에 좌우되는 것을 막기 위함이다.
+    /// - 모달을 당장 띄울 수 없으면(다른 탭이라 window 밖, 알럿이 이미 present 중)
+    ///   pending 으로 표시하고 조건이 풀리는 시점(viewDidAppear, 알럿 확인)에 재시도한다.
+    ///   `sessionExpired` 는 세션당 1회만 방출되므로 여기서 버리면 종료 플로우가 유실된다.
     private func beginEndFlow() {
-        // presentedViewController 가드: 만료 방출과 stop tap 이 겹칠 때 이중 present 방지.
-        guard currentState != .idle, presentedViewController == nil else { return }
+        guard currentState != .idle else { return }
+        // 시간 동결은 present 가능 여부와 무관하게 즉시 — 재시도를 기다리는 동안
+        // 집중 시간이 계속 누적되면 안 된다.
         if currentState == .running {
             pauseSubject.onNext(())
         }
+        // presentedViewController 가드: 만료 방출과 stop tap 이 겹칠 때 이중 present 방지 겸
+        // 알럿 위 present 실패 방지. window 가드: 다른 탭에서는 present 가 조용히 실패한다.
+        guard presentedViewController == nil, viewIfLoaded?.window != nil else {
+            isEndFlowPending = true
+            return
+        }
+        isEndFlowPending = false
         let modal = WorkLogModalViewController()
         modal.onComplete = { [weak self] workNote in
             self?.endConfirmedSubject.onNext(workNote)
@@ -246,12 +263,23 @@ final class FocusViewController: UIViewController {
         present(modal, animated: true)
     }
 
-    private func applyState(_ state: SessionState) {
-        switch state {
-        case .idle:    controlCapsule.state = .idle
-        case .running: controlCapsule.state = .running
-        case .paused:  controlCapsule.state = .paused
+    /// 탭 복귀로 화면이 다시 보이면 유예된 종료 플로우를 이어간다.
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        retryEndFlowIfPending()
+    }
+
+    private func retryEndFlowIfPending() {
+        guard isEndFlowPending else { return }
+        // 알럿 확인 직후에는 dismiss 애니메이션이 끝날 때까지 presentedViewController 가
+        // 남아 있어 즉시 재시도하면 가드에 걸린다. 비워질 때까지 runloop 단위로 미룬다.
+        guard presentedViewController == nil else {
+            DispatchQueue.main.async { [weak self] in
+                self?.retryEndFlowIfPending()
+            }
+            return
         }
+        beginEndFlow()
     }
 
     // MARK: - Error
@@ -262,7 +290,10 @@ final class FocusViewController: UIViewController {
             message: error.localizedDescription,
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "확인", style: .default))
+        // 알럿이 떠 있는 동안 만료가 발생했으면 확인을 닫는 시점에 종료 플로우를 이어간다.
+        alert.addAction(UIAlertAction(title: "확인", style: .default) { [weak self] _ in
+            self?.retryEndFlowIfPending()
+        })
         present(alert, animated: true)
     }
 }

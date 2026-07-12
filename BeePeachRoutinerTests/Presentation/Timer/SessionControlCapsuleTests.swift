@@ -108,6 +108,14 @@ final class SessionControlCapsuleTests: XCTestCase {
         XCTAssertEqual(sut.layer.cornerRadius, sut.bounds.height / 2)
     }
 
+    func test_layout_shouldCacheShadowPath() {
+        // Given / When
+        let sut = makeSUT()
+
+        // Then: shadowPath 미설정 시 매 프레임 offscreen shadow 계산이 발생한다
+        XCTAssertNotNil(sut.layer.shadowPath)
+    }
+
     func test_layout_shouldContainStopAndPlayPauseButtons() {
         // Given / When
         let sut = makeSUT()

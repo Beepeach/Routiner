@@ -285,6 +285,47 @@ final class FocusViewModelTests: XCTestCase {
         XCTAssertNil(useCase.lastEndedWorkNote, "저장 없이 닫으면 workNote 없이 end 를 호출해야 합니다")
     }
 
+    func test_endConfirmed_shouldEndSession_whenPaused() {
+        // Given: 실제 프로덕션 플로우 — beginEndFlow 는 항상 pause 를 선행하므로
+        // end 는 paused 상태에서 호출된다
+        let useCase = FocusSessionUseCaseStub()
+        let sut = FocusViewModel(useCase: useCase, maxDuration: 60 * 60)
+        let runtime = bind(sut)
+        let runningExp = expectIsRunningBecomesTrue(runtime.output)
+
+        runtime.dialSubject.onNext(0.5)
+        runtime.startSubject.onNext(())
+        wait(for: [runningExp], timeout: 1.0)
+
+        let pausedExp = expectation(description: "paused")
+        runtime.output.isPaused
+            .asObservable()
+            .skip(1)
+            .filter { $0 }
+            .take(1)
+            .subscribe(onNext: { _ in pausedExp.fulfill() })
+            .disposed(by: disposeBag)
+        runtime.pauseSubject.onNext(())
+        wait(for: [pausedExp], timeout: 1.0)
+
+        let endedExp = expectation(description: "isPaused becomes false after end")
+        runtime.output.isPaused
+            .asObservable()
+            .skip(1)
+            .filter { !$0 }
+            .take(1)
+            .subscribe(onNext: { _ in endedExp.fulfill() })
+            .disposed(by: disposeBag)
+
+        // When
+        runtime.endConfirmedSubject.onNext("일시정지 후 종료")
+
+        // Then: paused 에서도 end 가 호출되고 상태가 idle 로 리셋된다
+        wait(for: [endedExp], timeout: 1.0)
+        XCTAssertEqual(useCase.endCallCount, 1)
+        XCTAssertEqual(useCase.lastEndedWorkNote, "일시정지 후 종료")
+    }
+
     func test_endConfirmed_shouldBeIgnored_whenNoActiveSession() {
         // Given
         let useCase = FocusSessionUseCaseStub()

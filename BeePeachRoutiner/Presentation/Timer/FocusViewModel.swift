@@ -428,10 +428,14 @@ final class FocusViewModel {
         // == 비교 금지: dial ratio 환산 duration 은 59.999... 같은 비정수일 수 있다.
         // >= 도달 여부를 Bool 로 접고 distinctUntilChanged 로 세션당 1회만 방출한다.
         // 세션 종료 시 activeSession 이 nil 로 돌아가 false 로 재장전된다.
+        // epsilon 은 format(seconds:) 와 동일한 이유 — 환산 오차로 duration 이
+        // 1800.0000000002 처럼 정수 직상이면 라벨은 00:00 인데 만료가 다음 tick 으로
+        // 1초 밀리는 어긋남이 생긴다.
+        let epsilon: TimeInterval = 0.001
         Observable
             .combineLatest(elapsedRelay, activeSessionRelay)
             .map { elapsed, session in
-                session.map { elapsed >= $0.duration } ?? false
+                session.map { elapsed >= $0.duration - epsilon } ?? false
             }
             .distinctUntilChanged()
             .filter { $0 }

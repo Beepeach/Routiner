@@ -24,7 +24,7 @@ final class SessionControlCapsule: UIView {
     var state: State = .idle {
         didSet {
             guard state != oldValue else { return }
-            updateUI()
+            updateUI(animated: true)
         }
     }
 
@@ -79,12 +79,19 @@ final class SessionControlCapsule: UIView {
         super.layoutSubviews()
         // pill: 높이의 절반을 corner 로 — 어떤 높이로 계산되든 캡슐 형태 유지.
         layer.cornerRadius = bounds.height / 2
+        // shadowPath 캐싱 — 매 프레임 offscreen shadow 계산 방지 (CircularProgressRingView 관례).
+        layer.shadowPath = UIBezierPath(
+            roundedRect: bounds,
+            cornerRadius: bounds.height / 2
+        ).cgPath
     }
 
     // MARK: - Setup
 
     private func setupUI() {
-        backgroundColor = .white
+        // 라이트 모드에서는 스펙의 흰색 pill, 다크 모드에서는 elevated surface 로 적응.
+        // 비적응 .white 는 다크 화면(.systemBackground) 위에서 순백 캡슐로 깨진다.
+        backgroundColor = .secondarySystemGroupedBackground
         layer.shadowColor = UIColor.black.cgColor
         layer.shadowOpacity = 0.1
         layer.shadowRadius = 8
@@ -108,20 +115,27 @@ final class SessionControlCapsule: UIView {
         stopButton.addTarget(self, action: #selector(stopTapped), for: .touchUpInside)
         playPauseButton.addTarget(self, action: #selector(playPauseTapped), for: .touchUpInside)
 
-        updateUI()
+        updateUI(animated: false)
     }
 
     // MARK: - State
 
-    private func updateUI() {
-        // running → ⏸, idle/paused → ▶. crossDissolve 로 아이콘을 부드럽게 morph.
+    /// running → ⏸, idle/paused → ▶. 상태 전이 시에만 crossDissolve 로 morph 하고,
+    /// 초기 구성(init)에서는 애니메이션 없이 즉시 반영한다.
+    private func updateUI(animated: Bool) {
         let imageName = (state == .running) ? "pause.fill" : "play.fill"
-        UIView.transition(
-            with: playPauseButton,
-            duration: 0.3,
-            options: .transitionCrossDissolve
-        ) {
+        let applyImage = {
             self.playPauseButton.setImage(UIImage(systemName: imageName), for: .normal)
+        }
+        if animated {
+            UIView.transition(
+                with: playPauseButton,
+                duration: 0.3,
+                options: .transitionCrossDissolve,
+                animations: applyImage
+            )
+        } else {
+            applyImage()
         }
         // idle 에는 종료할 세션이 없으므로 stop 을 잠근다.
         stopButton.isEnabled = (state != .idle)
