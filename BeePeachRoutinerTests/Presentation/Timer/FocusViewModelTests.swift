@@ -224,9 +224,9 @@ final class FocusViewModelTests: XCTestCase {
         XCTAssertEqual(useCase.resumeCallCount, 1)
     }
 
-    // MARK: - cancel
+    // MARK: - end
 
-    func test_cancel_shouldCallUseCase_andResetIsRunning_whenRunning() {
+    func test_endConfirmed_shouldEndWithWorkNote_whenRunning() {
         // Given
         let useCase = FocusSessionUseCaseStub()
         let sut = FocusViewModel(useCase: useCase, maxDuration: 60 * 60)
@@ -237,33 +237,103 @@ final class FocusViewModelTests: XCTestCase {
         runtime.startSubject.onNext(())
         wait(for: [runningExp], timeout: 1.0)
 
-        let cancelledExp = expectation(description: "isRunning becomes false after cancel")
+        let endedExp = expectation(description: "isRunning becomes false after end")
         runtime.output.isRunning
             .asObservable()
             .skip(1)
             .filter { !$0 }
             .take(1)
-            .subscribe(onNext: { _ in cancelledExp.fulfill() })
+            .subscribe(onNext: { _ in endedExp.fulfill() })
+            .disposed(by: disposeBag)
+
+        // When: 모달 저장하기로 확정된 workNote
+        runtime.endConfirmedSubject.onNext("회의록 작성")
+
+        // Then
+        wait(for: [endedExp], timeout: 1.0)
+        XCTAssertEqual(useCase.endCallCount, 1)
+        XCTAssertNotNil(useCase.lastEndedSessionId)
+        XCTAssertEqual(useCase.lastEndedWorkNote, "회의록 작성")
+    }
+
+    func test_endConfirmed_shouldEndWithNilWorkNote_whenClosedWithoutSaving() {
+        // Given
+        let useCase = FocusSessionUseCaseStub()
+        let sut = FocusViewModel(useCase: useCase, maxDuration: 60 * 60)
+        let runtime = bind(sut)
+        let runningExp = expectIsRunningBecomesTrue(runtime.output)
+
+        runtime.dialSubject.onNext(0.5)
+        runtime.startSubject.onNext(())
+        wait(for: [runningExp], timeout: 1.0)
+
+        let endedExp = expectation(description: "isRunning becomes false after end")
+        runtime.output.isRunning
+            .asObservable()
+            .skip(1)
+            .filter { !$0 }
+            .take(1)
+            .subscribe(onNext: { _ in endedExp.fulfill() })
+            .disposed(by: disposeBag)
+
+        // When: 모달을 닫기/스와이프로 닫은 경우
+        runtime.endConfirmedSubject.onNext(nil)
+
+        // Then: 기록 자체는 유실되지 않고 workNote 없이 end 가 호출돼야 한다
+        wait(for: [endedExp], timeout: 1.0)
+        XCTAssertEqual(useCase.endCallCount, 1)
+        XCTAssertNil(useCase.lastEndedWorkNote, "저장 없이 닫으면 workNote 없이 end 를 호출해야 합니다")
+    }
+
+    func test_endConfirmed_shouldEndSession_whenPaused() {
+        // Given: 실제 프로덕션 플로우 — beginEndFlow 는 항상 pause 를 선행하므로
+        // end 는 paused 상태에서 호출된다
+        let useCase = FocusSessionUseCaseStub()
+        let sut = FocusViewModel(useCase: useCase, maxDuration: 60 * 60)
+        let runtime = bind(sut)
+        let runningExp = expectIsRunningBecomesTrue(runtime.output)
+
+        runtime.dialSubject.onNext(0.5)
+        runtime.startSubject.onNext(())
+        wait(for: [runningExp], timeout: 1.0)
+
+        let pausedExp = expectation(description: "paused")
+        runtime.output.isPaused
+            .asObservable()
+            .skip(1)
+            .filter { $0 }
+            .take(1)
+            .subscribe(onNext: { _ in pausedExp.fulfill() })
+            .disposed(by: disposeBag)
+        runtime.pauseSubject.onNext(())
+        wait(for: [pausedExp], timeout: 1.0)
+
+        let endedExp = expectation(description: "isPaused becomes false after end")
+        runtime.output.isPaused
+            .asObservable()
+            .skip(1)
+            .filter { !$0 }
+            .take(1)
+            .subscribe(onNext: { _ in endedExp.fulfill() })
             .disposed(by: disposeBag)
 
         // When
-        runtime.cancelSubject.onNext(())
+        runtime.endConfirmedSubject.onNext("일시정지 후 종료")
 
-        // Then
-        wait(for: [cancelledExp], timeout: 1.0)
+        // Then: paused 에서도 end 가 호출되고 상태가 idle 로 리셋된다
+        wait(for: [endedExp], timeout: 1.0)
         XCTAssertEqual(useCase.endCallCount, 1)
-        XCTAssertNotNil(useCase.lastEndedSessionId)
-        XCTAssertNil(useCase.lastEndedWorkNote, "취소 버튼 종료는 workNote 없이 end 를 호출해야 합니다")
+        XCTAssertEqual(useCase.lastEndedWorkNote, "일시정지 후 종료")
     }
 
-    func test_cancel_shouldBeIgnored_whenNoActiveSession() {
+    func test_endConfirmed_shouldBeIgnored_whenNoActiveSession() {
         // Given
         let useCase = FocusSessionUseCaseStub()
         let sut = FocusViewModel(useCase: useCase)
         let runtime = bind(sut)
 
         // When
-        runtime.cancelSubject.onNext(())
+        runtime.endConfirmedSubject.onNext("세션 없는 메모")
 
         let settle = expectation(description: "settle")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { settle.fulfill() }
@@ -271,6 +341,61 @@ final class FocusViewModelTests: XCTestCase {
 
         // Then
         XCTAssertEqual(useCase.endCallCount, 0)
+    }
+
+    // MARK: - sessionExpired
+
+    func test_sessionExpired_shouldEmitOnce_whenElapsedReachesDuration() {
+        // Given: 1초짜리 세션 — 실제 1초 tick 으로 만료를 관찰한다
+        let useCase = FocusSessionUseCaseStub()
+        let sut = FocusViewModel(useCase: useCase, maxDuration: 60)
+        let runtime = bind(sut)
+        let runningExp = expectIsRunningBecomesTrue(runtime.output)
+
+        var expiredCount = 0
+        let expiredExp = expectation(description: "sessionExpired emitted")
+        runtime.output.sessionExpired
+            .drive(onNext: {
+                expiredCount += 1
+                if expiredCount == 1 { expiredExp.fulfill() }
+            })
+            .disposed(by: disposeBag)
+
+        // When
+        runtime.wheelSubject.onNext(1)
+        runtime.startSubject.onNext(())
+        wait(for: [runningExp], timeout: 1.0)
+
+        // Then: 1초 도달 시 1회만 방출 (추가 tick 이 흘러도 재방출 없음)
+        wait(for: [expiredExp], timeout: 3.0)
+
+        let settle = expectation(description: "settle after extra tick")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { settle.fulfill() }
+        wait(for: [settle], timeout: 2.0)
+
+        XCTAssertEqual(expiredCount, 1)
+    }
+
+    func test_sessionExpired_shouldNotEmit_whenIdle() {
+        // Given: 세션 없이 시간만 흐르는 상황
+        let useCase = FocusSessionUseCaseStub()
+        let sut = FocusViewModel(useCase: useCase, maxDuration: 60)
+        let runtime = bind(sut)
+
+        var expiredCount = 0
+        runtime.output.sessionExpired
+            .drive(onNext: { expiredCount += 1 })
+            .disposed(by: disposeBag)
+
+        // When: duration 설정만 하고 start 없음
+        runtime.wheelSubject.onNext(1)
+
+        let settle = expectation(description: "settle")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { settle.fulfill() }
+        wait(for: [settle], timeout: 1.0)
+
+        // Then
+        XCTAssertEqual(expiredCount, 0)
     }
 
     // MARK: - isDialEnabled
@@ -626,7 +751,7 @@ final class FocusViewModelTests: XCTestCase {
         let startSubject: PublishSubject<Void>
         let pauseSubject: PublishSubject<Void>
         let resumeSubject: PublishSubject<Void>
-        let cancelSubject: PublishSubject<Void>
+        let endConfirmedSubject: PublishSubject<String?>
         let output: FocusViewModel.Output
     }
 
@@ -637,7 +762,7 @@ final class FocusViewModelTests: XCTestCase {
         let startSubject = PublishSubject<Void>()
         let pauseSubject = PublishSubject<Void>()
         let resumeSubject = PublishSubject<Void>()
-        let cancelSubject = PublishSubject<Void>()
+        let endConfirmedSubject = PublishSubject<String?>()
         let output = viewModel.transform(input: .init(
             dialRatioChanged: dialSubject.asObservable(),
             wheelDurationChanged: wheelSubject.asObservable(),
@@ -645,7 +770,7 @@ final class FocusViewModelTests: XCTestCase {
             startTapped: startSubject.asObservable(),
             pauseTapped: pauseSubject.asObservable(),
             resumeTapped: resumeSubject.asObservable(),
-            cancelTapped: cancelSubject.asObservable()
+            endConfirmed: endConfirmedSubject.asObservable()
         ))
         return Runtime(
             dialSubject: dialSubject,
@@ -654,7 +779,7 @@ final class FocusViewModelTests: XCTestCase {
             startSubject: startSubject,
             pauseSubject: pauseSubject,
             resumeSubject: resumeSubject,
-            cancelSubject: cancelSubject,
+            endConfirmedSubject: endConfirmedSubject,
             output: output
         )
     }

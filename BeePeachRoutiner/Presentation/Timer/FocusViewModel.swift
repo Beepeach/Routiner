@@ -14,10 +14,12 @@ import RxCocoa
 /// 3. **running**: 1초 간격 timer로 elapsed 증가. 링/휠/라벨 모두 남은 시간을
 ///    라이브로 비춘다 — 모드(dial/digital)는 표시 방식일 뿐이라 전환은 항상 허용,
 ///    다이얼·휠 *입력*만 잠근다.
-/// 4. **cancel**: `FocusSessionUseCase.end(workNote: nil)` 호출 — 도메인이 누적
-///    시간 기준으로 completed/cancelled 를 판정한다. 성공 시 idle 로 복귀하되
-///    `selectedDuration` 은 유지(사용자 의도 보존). 작업기록(workNote) 입력
-///    모달은 후속 태스크에서 연결한다.
+/// 4. **end**: 작업기록 모달이 확정한 workNote(저장: 텍스트, 닫기/스와이프: nil)로
+///    `FocusSessionUseCase.end(workNote:)` 호출 — 도메인이 누적 시간 기준으로
+///    completed/cancelled 를 판정한다. 성공 시 idle 로 복귀하되
+///    `selectedDuration` 은 유지(사용자 의도 보존).
+/// 5. **만료**: elapsed 가 duration 에 도달하면 `sessionExpired` 를 1회 방출한다.
+///    VC 가 이를 받아 stop tap 과 동일한 종료 플로우(pause → 모달)를 태운다.
 final class FocusViewModel {
 
     // MARK: - Input / Output
@@ -32,7 +34,9 @@ final class FocusViewModel {
         let startTapped: Observable<Void>
         let pauseTapped: Observable<Void>
         let resumeTapped: Observable<Void>
-        let cancelTapped: Observable<Void>
+        /// 작업기록 모달이 확정한 종료 결과. 저장하기: 입력 텍스트, 닫기/스와이프: nil.
+        /// stop tap 자체는 VM 에 오지 않는다 — VC 가 모달을 띄우고 확정값만 흘려보낸다.
+        let endConfirmed: Observable<String?>
     }
 
     struct Output {
@@ -52,6 +56,8 @@ final class FocusViewModel {
         /// 다이얼/휠 인터랙션 활성화 여부. running/paused 모두 false 로 잠근다.
         /// 입력만 잠글 뿐 모드 전환은 항상 허용된다.
         let isDialEnabled: Driver<Bool>
+        /// 세션 시간이 소진되는 순간 세션당 1회 방출. VC 가 종료 플로우(모달)를 트리거한다.
+        let sessionExpired: Driver<Void>
         /// UseCase 실패 시 흘러나오는 에러.
         let error: Driver<Error>
     }
@@ -98,6 +104,7 @@ final class FocusViewModel {
         let activeSessionRelay = BehaviorRelay<FocusSession?>(value: nil)
         let elapsedRelay = BehaviorRelay<TimeInterval>(value: 0)
         let errorSubject = PublishSubject<Error>()
+        let expiredSubject = PublishSubject<Void>()
 
         bindDial(
             dialRatioChanged: input.dialRatioChanged,
@@ -144,8 +151,8 @@ final class FocusViewModel {
             errorSubject: errorSubject
         )
 
-        bindCancel(
-            cancelTapped: input.cancelTapped,
+        bindEnd(
+            endConfirmed: input.endConfirmed,
             isRunningRelay: isRunningRelay,
             isPausedRelay: isPausedRelay,
             activeSessionRelay: activeSessionRelay,
@@ -156,6 +163,12 @@ final class FocusViewModel {
         bindTimer(
             isRunningRelay: isRunningRelay,
             elapsedRelay: elapsedRelay
+        )
+
+        bindExpiry(
+            elapsedRelay: elapsedRelay,
+            activeSessionRelay: activeSessionRelay,
+            expiredSubject: expiredSubject
         )
 
         let ringRatio = Observable
@@ -205,6 +218,7 @@ final class FocusViewModel {
             isRunning: isRunningRelay.asDriver(),
             isPaused: isPausedRelay.asDriver(),
             isDialEnabled: isDialEnabled,
+            sessionExpired: expiredSubject.asDriver(onErrorDriveWith: .empty()),
             error: errorSubject.asDriver(onErrorDriveWith: .empty())
         )
     }
@@ -358,8 +372,8 @@ final class FocusViewModel {
             .disposed(by: disposeBag)
     }
 
-    private func bindCancel(
-        cancelTapped: Observable<Void>,
+    private func bindEnd(
+        endConfirmed: Observable<String?>,
         isRunningRelay: BehaviorRelay<Bool>,
         isPausedRelay: BehaviorRelay<Bool>,
         activeSessionRelay: BehaviorRelay<FocusSession?>,
@@ -368,11 +382,11 @@ final class FocusViewModel {
     ) {
         let useCase = self.useCase
 
-        cancelTapped
-            .withLatestFrom(activeSessionRelay)
-            .compactMap { $0 }
-            .flatMapLatest { session -> Observable<Event<FocusSession>> in
-                Self.singleFromAsync { try await useCase.end(sessionId: session.id, workNote: nil) }
+        endConfirmed
+            .withLatestFrom(activeSessionRelay) { workNote, session in (workNote, session) }
+            .compactMap { workNote, session in session.map { (workNote, $0) } }
+            .flatMapLatest { workNote, session -> Observable<Event<FocusSession>> in
+                Self.singleFromAsync { try await useCase.end(sessionId: session.id, workNote: workNote) }
                     .materialize()
             }
             .subscribe(onNext: { event in
@@ -403,6 +417,30 @@ final class FocusViewModel {
             }
             .withLatestFrom(elapsedRelay) { _, elapsed in elapsed + 1 }
             .bind(to: elapsedRelay)
+            .disposed(by: disposeBag)
+    }
+
+    private func bindExpiry(
+        elapsedRelay: BehaviorRelay<TimeInterval>,
+        activeSessionRelay: BehaviorRelay<FocusSession?>,
+        expiredSubject: PublishSubject<Void>
+    ) {
+        // == 비교 금지: dial ratio 환산 duration 은 59.999... 같은 비정수일 수 있다.
+        // >= 도달 여부를 Bool 로 접고 distinctUntilChanged 로 세션당 1회만 방출한다.
+        // 세션 종료 시 activeSession 이 nil 로 돌아가 false 로 재장전된다.
+        // epsilon 은 format(seconds:) 와 동일한 이유 — 환산 오차로 duration 이
+        // 1800.0000000002 처럼 정수 직상이면 라벨은 00:00 인데 만료가 다음 tick 으로
+        // 1초 밀리는 어긋남이 생긴다.
+        let epsilon: TimeInterval = 0.001
+        Observable
+            .combineLatest(elapsedRelay, activeSessionRelay)
+            .map { elapsed, session in
+                session.map { elapsed >= $0.duration - epsilon } ?? false
+            }
+            .distinctUntilChanged()
+            .filter { $0 }
+            .map { _ in () }
+            .bind(to: expiredSubject)
             .disposed(by: disposeBag)
     }
 

@@ -13,11 +13,9 @@ import SnapKit
 /// - 원형 다이얼: `CircularProgressRingView`. knob 을 PanGesture 로 돌려 시간 설정.
 /// - 휠 피커: `TimeWheelPickerView`. 분/초 정밀 입력 (Digital Mode).
 /// - 시간 라벨: idle 에서는 설정한 시간, 진행 중에는 남은 시간 ("MM:SS").
-/// - 컨트롤: 단일 `primaryButton` 이 상태에 따라 텍스트/액션이 바뀐다.
-///   - idle:   "Start"  → 세션 시작
-///   - running:"Pause"  → 일시정지
-///   - paused: "Resume" → 재개
-///   `cancelButton` 은 running/paused 상태에서만 노출되어 세션을 취소한다.
+/// - 컨트롤: `SessionControlCapsule` 하나로 통합. play/pause 버튼이 상태에 따라
+///   start/pause/resume 로 분기하고, stop 버튼이 세션을 종료한다.
+///   캡슐은 모드(Dial/Digital)와 무관하게 항상 노출된다 — 모드는 표시 방식일 뿐.
 final class FocusViewController: UIViewController {
 
     // MARK: - Dependencies
@@ -31,17 +29,25 @@ final class FocusViewController: UIViewController {
     /// 사용자가 휠 피커를 돌릴 때 duration 을 ViewModel 로 전달하는 통로.
     private let wheelDurationSubject = PublishSubject<TimeInterval>()
 
-    /// primaryButton tap 을 현재 상태(idle/running/paused)에 따라 분기하기 위한 통로들.
+    /// play/pause tap 을 현재 상태(idle/running/paused)에 따라 분기하기 위한 통로들.
     private let startSubject = PublishSubject<Void>()
     private let pauseSubject = PublishSubject<Void>()
     private let resumeSubject = PublishSubject<Void>()
 
+    /// 작업기록 모달이 확정한 종료 결과(저장: 텍스트, 닫기/스와이프: nil)를
+    /// ViewModel 로 전달하는 통로.
+    private let endConfirmedSubject = PublishSubject<String?>()
+
     // MARK: - State Snapshot
 
-    /// primaryButton tap 분기에 쓰는 현재 상태 스냅샷.
-    /// Driver(`isRunning`, `isPaused`) 두 값을 별도 관리하는 대신 합쳐서 enum 으로 보관한다.
-    private enum SessionState { case idle, running, paused }
-    private var currentState: SessionState = .idle
+    /// play/pause tap 분기와 종료 플로우 가드에 쓰는 현재 상태 스냅샷.
+    /// Driver(`isRunning`, `isPaused`) 두 값을 별도 관리하는 대신 합쳐서 보관한다.
+    /// 캡슐과 case 가 1:1 이라 별도 enum 을 두지 않고 캡슐의 State 를 그대로 쓴다.
+    private var currentState: SessionControlCapsule.State = .idle
+
+    /// 만료/stop 시점에 모달을 띄울 수 없었던 경우(다른 탭, 알럿 위) 재시도 예약 플래그.
+    /// sessionExpired 는 세션당 1회만 방출되므로 이벤트를 버리면 종료 플로우가 유실된다.
+    private var isEndFlowPending = false
 
     // MARK: - UI
 
@@ -68,21 +74,7 @@ final class FocusViewController: UIViewController {
         return label
     }()
 
-    private let primaryButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Start", for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 18, weight: .bold)
-        return button
-    }()
-
-    private let cancelButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Cancel", for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 18, weight: .bold)
-        button.tintColor = .systemRed
-        button.isHidden = true
-        return button
-    }()
+    private let controlCapsule = SessionControlCapsule()
 
     // MARK: - Initialization
 
@@ -114,8 +106,7 @@ final class FocusViewController: UIViewController {
         view.addSubview(ringView)
         ringView.addSubview(timeLabel)
         view.addSubview(wheelPickerView)
-        view.addSubview(cancelButton)
-        view.addSubview(primaryButton)
+        view.addSubview(controlCapsule)
 
         ringView.snp.makeConstraints { make in
             make.centerX.equalTo(view.safeAreaLayoutGuide)
@@ -131,18 +122,10 @@ final class FocusViewController: UIViewController {
             make.center.equalTo(ringView)
             make.width.equalTo(ringView)
         }
-        // 기본 위치: primaryButton 가운데, cancelButton 그 왼쪽.
-        primaryButton.snp.makeConstraints { make in
+        // 캡슐은 하단 고정 — 다이얼/휠(중앙 슬롯)과 겹치지 않는다.
+        controlCapsule.snp.makeConstraints { make in
             make.centerX.equalToSuperview()
-            make.top.equalTo(ringView.snp.bottom).offset(40)
-            make.height.equalTo(56)
-            make.width.equalTo(160)
-        }
-        cancelButton.snp.makeConstraints { make in
-            make.trailing.equalTo(primaryButton.snp.leading).offset(-16)
-            make.centerY.equalTo(primaryButton)
-            make.height.equalTo(primaryButton)
-            make.width.equalTo(120)
+            make.bottom.equalTo(view.safeAreaLayoutGuide).offset(-24)
         }
     }
 
@@ -159,17 +142,18 @@ final class FocusViewController: UIViewController {
     // MARK: - Binding
 
     private func bindViewModel() {
-        // primary 버튼 한 개를 현재 상태에 따라 start/pause/resume 로 분기.
-        primaryButton.rx.tap
-            .subscribe(onNext: { [weak self] in
-                guard let self else { return }
-                switch self.currentState {
-                case .idle:    self.startSubject.onNext(())
-                case .running: self.pauseSubject.onNext(())
-                case .paused:  self.resumeSubject.onNext(())
-                }
-            })
-            .disposed(by: disposeBag)
+        // play/pause 버튼 한 개를 현재 상태에 따라 start/pause/resume 로 분기.
+        controlCapsule.onPlayPauseTapped = { [weak self] in
+            guard let self else { return }
+            switch currentState {
+            case .idle:    startSubject.onNext(())
+            case .running: pauseSubject.onNext(())
+            case .paused:  resumeSubject.onNext(())
+            }
+        }
+        controlCapsule.onStopTapped = { [weak self] in
+            self?.beginEndFlow()
+        }
 
         let input = FocusViewModel.Input(
             dialRatioChanged: dialRatioSubject.asObservable(),
@@ -179,7 +163,7 @@ final class FocusViewController: UIViewController {
             startTapped: startSubject.asObservable(),
             pauseTapped: pauseSubject.asObservable(),
             resumeTapped: resumeSubject.asObservable(),
-            cancelTapped: cancelButton.rx.tap.asObservable()
+            endConfirmed: endConfirmedSubject.asObservable()
         )
         let output = viewModel.transform(input: input)
 
@@ -215,13 +199,14 @@ final class FocusViewController: UIViewController {
             .drive(timeLabel.rx.text)
             .disposed(by: disposeBag)
 
-        // running/paused 조합으로 currentState 갱신 + 버튼 텍스트/노출 토글
+        // running/paused 조합으로 currentState 갱신 + 캡슐 상태 동기화
         Driver.combineLatest(output.isRunning, output.isPaused)
             .drive(onNext: { [weak self] running, paused in
                 guard let self else { return }
-                let state: SessionState = running ? .running : (paused ? .paused : .idle)
+                let state: SessionControlCapsule.State =
+                    running ? .running : (paused ? .paused : .idle)
                 self.currentState = state
-                self.applyState(state)
+                self.controlCapsule.state = state
             })
             .disposed(by: disposeBag)
 
@@ -233,6 +218,13 @@ final class FocusViewController: UIViewController {
             })
             .disposed(by: disposeBag)
 
+        // 시간 소진도 stop tap 과 같은 종료 플로우를 태운다.
+        output.sessionExpired
+            .drive(onNext: { [weak self] in
+                self?.beginEndFlow()
+            })
+            .disposed(by: disposeBag)
+
         output.error
             .drive(onNext: { [weak self] error in
                 self?.presentError(error)
@@ -240,18 +232,54 @@ final class FocusViewController: UIViewController {
             .disposed(by: disposeBag)
     }
 
-    private func applyState(_ state: SessionState) {
-        switch state {
-        case .idle:
-            primaryButton.setTitle("Start", for: .normal)
-            cancelButton.isHidden = true
-        case .running:
-            primaryButton.setTitle("Pause", for: .normal)
-            cancelButton.isHidden = false
-        case .paused:
-            primaryButton.setTitle("Resume", for: .normal)
-            cancelButton.isHidden = false
+    // MARK: - End Flow
+
+    /// stop tap 과 timer 만료가 공유하는 종료 플로우.
+    ///
+    /// - running 이면 먼저 pause 한다 — 도메인의 accumulatedElapsed 는 벽시계 기반이라
+    ///   모달이 떠 있는 동안에도 계속 누적되어, 60초 문턱 판정(기록 여부)이
+    ///   모달에 머문 시간에 좌우되는 것을 막기 위함이다.
+    /// - 모달을 당장 띄울 수 없으면(다른 탭이라 window 밖, 알럿이 이미 present 중)
+    ///   pending 으로 표시하고 조건이 풀리는 시점(viewDidAppear, 알럿 확인)에 재시도한다.
+    ///   `sessionExpired` 는 세션당 1회만 방출되므로 여기서 버리면 종료 플로우가 유실된다.
+    private func beginEndFlow() {
+        guard currentState != .idle else { return }
+        // 시간 동결은 present 가능 여부와 무관하게 즉시 — 재시도를 기다리는 동안
+        // 집중 시간이 계속 누적되면 안 된다.
+        if currentState == .running {
+            pauseSubject.onNext(())
         }
+        // presentedViewController 가드: 만료 방출과 stop tap 이 겹칠 때 이중 present 방지 겸
+        // 알럿 위 present 실패 방지. window 가드: 다른 탭에서는 present 가 조용히 실패한다.
+        guard presentedViewController == nil, viewIfLoaded?.window != nil else {
+            isEndFlowPending = true
+            return
+        }
+        isEndFlowPending = false
+        let modal = WorkLogModalViewController()
+        modal.onComplete = { [weak self] workNote in
+            self?.endConfirmedSubject.onNext(workNote)
+        }
+        present(modal, animated: true)
+    }
+
+    /// 탭 복귀로 화면이 다시 보이면 유예된 종료 플로우를 이어간다.
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        retryEndFlowIfPending()
+    }
+
+    private func retryEndFlowIfPending() {
+        guard isEndFlowPending else { return }
+        // 알럿 확인 직후에는 dismiss 애니메이션이 끝날 때까지 presentedViewController 가
+        // 남아 있어 즉시 재시도하면 가드에 걸린다. 비워질 때까지 runloop 단위로 미룬다.
+        guard presentedViewController == nil else {
+            DispatchQueue.main.async { [weak self] in
+                self?.retryEndFlowIfPending()
+            }
+            return
+        }
+        beginEndFlow()
     }
 
     // MARK: - Error
@@ -262,7 +290,10 @@ final class FocusViewController: UIViewController {
             message: error.localizedDescription,
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "확인", style: .default))
+        // 알럿이 떠 있는 동안 만료가 발생했으면 확인을 닫는 시점에 종료 플로우를 이어간다.
+        alert.addAction(UIAlertAction(title: "확인", style: .default) { [weak self] _ in
+            self?.retryEndFlowIfPending()
+        })
         present(alert, animated: true)
     }
 }
