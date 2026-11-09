@@ -18,9 +18,12 @@ node_modules/
 *.sln
 *.sw?
 
-# Claude / Cursor project-local
+# Agent project-local sessions/auth/cache/config
 .claude/commands/tm
 .claude/settings.local.json
+.codex/
+.orca/
+.pi/
 .taskmaster
 .mcp.json
 CLAUDE.local.md
